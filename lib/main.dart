@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'neural_sound_controller.dart';
+import 'settings/local_settings_repository.dart';
+import 'settings/neural_settings.dart';
+import 'settings/settings_repository.dart';
 import 'stats/local_stats_repository.dart';
 import 'stats/stats_models.dart';
 import 'stats/stats_repository.dart';
@@ -16,9 +19,14 @@ Future<void> main() async {
 }
 
 class NeuralRecallApp extends StatefulWidget {
-  const NeuralRecallApp({super.key, this.statsRepository});
+  const NeuralRecallApp({
+    super.key,
+    this.statsRepository,
+    this.settingsRepository,
+  });
 
   final StatsRepository? statsRepository;
+  final SettingsRepository? settingsRepository;
 
   @override
   State<NeuralRecallApp> createState() => _NeuralRecallAppState();
@@ -32,33 +40,44 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     const NeuralSettings(),
   );
   late final StatsRepository _statsRepository;
-  bool _isLoadingStats = true;
+  late final SettingsRepository _settingsRepository;
+  bool _isLoadingAppState = true;
 
   @override
   void initState() {
     super.initState();
     _statsRepository = widget.statsRepository ?? LocalStatsRepository();
+    _settingsRepository =
+        widget.settingsRepository ?? LocalSettingsRepository();
     WidgetsBinding.instance.addObserver(_fullscreenObserver);
-    unawaited(_loadPersistedStats());
+    unawaited(_loadPersistedAppState());
   }
 
-  Future<void> _loadPersistedStats() async {
+  Future<void> _loadPersistedAppState() async {
     PlayerStats stats = PlayerStats.empty();
+    NeuralSettings settings = const NeuralSettings();
 
     try {
       stats = await _statsRepository.loadStats();
     } catch (_) {
       stats = PlayerStats.empty();
-    } finally {
-      if (!mounted) {
-        return;
-      }
-
-      _playerStats.value = stats;
-      setState(() {
-        _isLoadingStats = false;
-      });
     }
+
+    try {
+      settings = await _settingsRepository.loadSettings();
+    } catch (_) {
+      settings = const NeuralSettings();
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    _playerStats.value = stats;
+    _settings.value = settings;
+    setState(() {
+      _isLoadingAppState = false;
+    });
   }
 
   Future<void> _saveCompletedSession(GameSession session) async {
@@ -69,6 +88,11 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     }
 
     _playerStats.value = stats;
+  }
+
+  void _updateSettings(NeuralSettings nextSettings) {
+    _settings.value = nextSettings;
+    unawaited(_settingsRepository.saveSettings(nextSettings));
   }
 
   @override
@@ -88,12 +112,13 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: NeuralTheme.materialTheme,
-          home: _isLoadingStats
+          home: _isLoadingAppState
               ? const _StartupLoadingScreen()
               : NeuralHomeShell(
                   playerStats: _playerStats,
                   settings: _settings,
                   onSessionCompleted: _saveCompletedSession,
+                  onSettingsChanged: _updateSettings,
                 ),
         );
       },
@@ -124,8 +149,6 @@ class _StartupLoadingScreen extends StatelessWidget {
     );
   }
 }
-
-enum AppThemeProfile { neuralBlue, emberGlow, mintCircuit }
 
 @immutable
 class AppThemePalette {
@@ -269,111 +292,6 @@ class NeuralTheme {
   }
 }
 
-@immutable
-class NeuralSettings {
-  const NeuralSettings({
-    this.hapticsEnabled = true,
-    this.reducedMotion = false,
-    this.trainingHintsEnabled = true,
-    this.confirmResetEnabled = true,
-    this.soundEnabled = true,
-    this.soundLevel = 0.76,
-    this.sequenceSpeed = 1.0,
-    this.overdriveWindowScale = 1.0,
-    this.appTheme = AppThemeProfile.neuralBlue,
-  });
-
-  final bool hapticsEnabled;
-  final bool reducedMotion;
-  final bool trainingHintsEnabled;
-  final bool confirmResetEnabled;
-  final bool soundEnabled;
-  final double soundLevel;
-  final double sequenceSpeed;
-  final double overdriveWindowScale;
-  final AppThemeProfile appTheme;
-
-  NeuralSettings copyWith({
-    bool? hapticsEnabled,
-    bool? reducedMotion,
-    bool? trainingHintsEnabled,
-    bool? confirmResetEnabled,
-    bool? soundEnabled,
-    double? soundLevel,
-    double? sequenceSpeed,
-    double? overdriveWindowScale,
-    AppThemeProfile? appTheme,
-  }) {
-    return NeuralSettings(
-      hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
-      reducedMotion: reducedMotion ?? this.reducedMotion,
-      trainingHintsEnabled: trainingHintsEnabled ?? this.trainingHintsEnabled,
-      confirmResetEnabled: confirmResetEnabled ?? this.confirmResetEnabled,
-      soundEnabled: soundEnabled ?? this.soundEnabled,
-      soundLevel: soundLevel ?? this.soundLevel,
-      sequenceSpeed: sequenceSpeed ?? this.sequenceSpeed,
-      overdriveWindowScale: overdriveWindowScale ?? this.overdriveWindowScale,
-      appTheme: appTheme ?? this.appTheme,
-    );
-  }
-
-  Duration tuneDuration(
-    Duration duration, {
-    double reducedFactor = 0.72,
-    int minMilliseconds = 60,
-  }) {
-    if (!reducedMotion) {
-      final int adjustedMs = math.max(
-        minMilliseconds,
-        (duration.inMilliseconds / sequenceSpeed).round(),
-      );
-      return Duration(milliseconds: adjustedMs);
-    }
-
-    final int scaledMs = math.max(
-      minMilliseconds,
-      ((duration.inMilliseconds * reducedFactor) / sequenceSpeed).round(),
-    );
-    return Duration(milliseconds: scaledMs);
-  }
-
-  Duration tuneOverdriveWindow(
-    Duration baseTapTimeout, {
-    required int round,
-    int decayPerRound = 65,
-    int minMilliseconds = 700,
-  }) {
-    final int adjustedMs = math.max(
-      minMilliseconds,
-      baseTapTimeout.inMilliseconds - math.max(0, round - 1) * decayPerRound,
-    );
-    return Duration(milliseconds: (adjustedMs * overdriveWindowScale).round());
-  }
-
-  double get effectiveSoundLevel =>
-      soundEnabled ? soundLevel.clamp(0.0, 1.0) : 0.0;
-
-  String get paceLabel {
-    if (sequenceSpeed < 0.95) {
-      return 'Steady';
-    }
-    if (sequenceSpeed > 1.08) {
-      return 'Fast';
-    }
-    return 'Balanced';
-  }
-
-  String get overdriveLabel {
-    if (overdriveWindowScale < 0.95) {
-      return 'Tight';
-    }
-    if (overdriveWindowScale > 1.08) {
-      return 'Forgiving';
-    }
-    return 'Standard';
-  }
-}
-
 const double _navBarBaseHeight = 88;
 const double _mainMenuDesignWidth = 560;
 const double _mainMenuDesignHeight = 680;
@@ -494,64 +412,79 @@ class MainMenuScreen extends StatelessWidget {
     required this.playerStats,
     required this.settings,
     required this.onSessionCompleted,
-    this.onOpenSettings,
+    required this.onSettingsChanged,
   });
 
   final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
   final Future<void> Function(GameSession session) onSessionCompleted;
-  final VoidCallback? onOpenSettings;
+  final ValueChanged<NeuralSettings> onSettingsChanged;
 
   @override
   Widget build(BuildContext context) {
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
     final double bottomNavHeight = 74 + math.max(12, bottomInset);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [NeuralTheme.background, NeuralTheme.backgroundBottom],
-        ),
-      ),
-      child: Stack(
-        children: [
-          const _BackgroundEffects(),
-          SafeArea(
-            bottom: false,
-            child: Column(
+    return ValueListenableBuilder<NeuralSettings>(
+      valueListenable: settings,
+      builder: (context, currentSettings, _) {
+        NeuralTheme.activate(currentSettings.appTheme);
+        return Scaffold(
+          body: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [NeuralTheme.background, NeuralTheme.backgroundBottom],
+              ),
+            ),
+            child: Stack(
               children: [
-                NeuralTopBar(onAction: onOpenSettings),
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(24, 8, 24, bottomNavHeight),
-                    child: _ScaleToFit(
-                      designWidth: _mainMenuDesignWidth,
-                      designHeight: _mainMenuDesignHeight,
-                      child: Column(
-                        children: [
-                          const _HeroLogo(),
-                          const SizedBox(height: 28),
-                          _ModeButton(
-                            mode: GameMode.focus,
-                            onTap: () => _openGame(context, GameMode.focus),
+                const _BackgroundEffects(),
+                SafeArea(
+                  bottom: false,
+                  child: Column(
+                    children: [
+                      NeuralTopBar(onAction: () => _openSettings(context)),
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            24,
+                            8,
+                            24,
+                            bottomNavHeight,
                           ),
-                          const SizedBox(height: 16),
-                          _ModeButton(
-                            mode: GameMode.overdrive,
-                            onTap: () => _openGame(context, GameMode.overdrive),
-                          ),
-                          const Spacer(),
-                          Text(
-                            'V1.0.0',
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(
-                                  color: NeuralTheme.textDim.withValues(
-                                    alpha: 0.5,
-                                  ),
+                          child: _ScaleToFit(
+                            designWidth: _mainMenuDesignWidth,
+                            designHeight: _mainMenuDesignHeight,
+                            child: Column(
+                              children: [
+                                const _HeroLogo(),
+                                const SizedBox(height: 28),
+                                _ModeButton(
+                                  mode: GameMode.focus,
+                                  onTap: () =>
+                                      _openGame(context, GameMode.focus),
                                 ),
+                                const SizedBox(height: 16),
+                                _ModeButton(
+                                  mode: GameMode.overdrive,
+                                  onTap: () =>
+                                      _openGame(context, GameMode.overdrive),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  'V1.0.0',
+                                  style: Theme.of(context).textTheme.labelSmall
+                                      ?.copyWith(
+                                        color: NeuralTheme.textDim.withValues(
+                                          alpha: 0.5,
+                                        ),
+                                      ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -576,6 +509,41 @@ class MainMenuScreen extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _openSettings(BuildContext context) {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsScreen(
+          playerStats: playerStats,
+          settings: settings,
+          onSettingsChanged: onSettingsChanged,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openStats(BuildContext context) {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => StatsScreen(
+          playerStats: playerStats,
+          settings: settings,
+          onSettingsChanged: onSettingsChanged,
+        ),
+      ),
+    );
+  }
+
+  void _handleNavigation(BuildContext context, NeuralNavItem item) {
+    if (item == NeuralNavItem.stats) {
+      _openStats(context);
+      return;
+    }
+
+    if (item == NeuralNavItem.settings) {
+      _openSettings(context);
+    }
+  }
 }
 
 class StatsScreen extends StatelessWidget {
@@ -583,10 +551,12 @@ class StatsScreen extends StatelessWidget {
     super.key,
     required this.playerStats,
     required this.settings,
+    required this.onSettingsChanged,
   });
 
   final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
+  final ValueChanged<NeuralSettings> onSettingsChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -628,8 +598,30 @@ class StatsScreen extends StatelessWidget {
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: NeuralBottomNav(
+                    selected: NeuralNavItem.stats,
+                    onItemSelected: (item) {
+                      if (item == NeuralNavItem.grid) {
+                        Navigator.of(context).pop();
+                      }
+                      if (item == NeuralNavItem.settings) {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute<void>(
+                            builder: (_) => SettingsScreen(
+                              playerStats: playerStats,
+                              settings: settings,
+                              onSettingsChanged: onSettingsChanged,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
                 ),
               ),
             ],
@@ -645,10 +637,12 @@ class SettingsScreen extends StatelessWidget {
     super.key,
     required this.playerStats,
     required this.settings,
+    required this.onSettingsChanged,
   });
 
   final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
+  final ValueChanged<NeuralSettings> onSettingsChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -658,40 +652,62 @@ class SettingsScreen extends StatelessWidget {
       valueListenable: settings,
       builder: (context, currentSettings, _) {
         NeuralTheme.activate(currentSettings.appTheme);
-        return DecoratedBox(
-          decoration: BoxDecoration(color: NeuralTheme.background),
-          child: Stack(
-            children: [
-              const _BackgroundEffects(),
-              SafeArea(
-                bottom: false,
-                child: Column(
-                  children: [
-                    const NeuralTopBar(),
-                    Expanded(
-                      child: ValueListenableBuilder<PlayerStats>(
-                        valueListenable: playerStats,
-                        builder: (context, currentStats, child) {
-                          return SingleChildScrollView(
-                            padding: EdgeInsets.fromLTRB(
-                              24,
-                              8,
-                              24,
-                              bottomNavHeight + 18,
-                            ),
-                            child: Center(
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: _statsScreenDesignWidth,
-                                ),
-                                child: _SettingsDashboard(
-                                  bestStreak: currentStats.bestStreak,
-                                  settings: currentSettings,
-                                  onSettingsChanged: (nextSettings) {
-                                    settings.value = nextSettings;
-                                  },
+        return Scaffold(
+          body: DecoratedBox(
+            decoration: BoxDecoration(color: NeuralTheme.background),
+            child: Stack(
+              children: [
+                const _BackgroundEffects(),
+                SafeArea(
+                  bottom: false,
+                  child: Column(
+                    children: [
+                      NeuralTopBar(onBack: () => Navigator.of(context).pop()),
+                      Expanded(
+                        child: ValueListenableBuilder<PlayerStats>(
+                          valueListenable: playerStats,
+                          builder: (context, currentStats, child) {
+                            return SingleChildScrollView(
+                              padding: EdgeInsets.fromLTRB(
+                                24,
+                                8,
+                                24,
+                                bottomNavHeight + 18,
+                              ),
+                              child: Center(
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: _statsScreenDesignWidth,
+                                  ),
+                                  child: _SettingsDashboard(
+                                    bestStreak: currentStats.bestStreak,
+                                    settings: currentSettings,
+                                    onSettingsChanged: onSettingsChanged,
+                                  ),
                                 ),
                               ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: NeuralBottomNav(
+                    selected: NeuralNavItem.settings,
+                    onItemSelected: (item) {
+                      if (item == NeuralNavItem.grid) {
+                        Navigator.of(context).pop();
+                      }
+                      if (item == NeuralNavItem.stats) {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute<void>(
+                            builder: (_) => StatsScreen(
+                              playerStats: playerStats,
+                              settings: settings,
+                              onSettingsChanged: onSettingsChanged,
                             ),
                           );
                         },
@@ -1428,10 +1444,8 @@ class _StatsDashboard extends StatelessWidget {
         const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
-            final bool isTwoColumn = constraints.maxWidth >= 430;
-            final double cardWidth = isTwoColumn
-                ? (constraints.maxWidth - 16) / 2
-                : constraints.maxWidth;
+            final double cardWidth = (constraints.maxWidth - 16) / 2;
+            final double cardHeight = math.max(cardWidth, 228);
 
             return Wrap(
               spacing: 16,
@@ -1439,6 +1453,7 @@ class _StatsDashboard extends StatelessWidget {
               children: [
                 SizedBox(
                   width: cardWidth,
+                  height: cardHeight,
                   child: _MetricCard(
                     label: 'BEST SCORE',
                     value: _formatNumber(stats.bestScore),
@@ -1448,6 +1463,7 @@ class _StatsDashboard extends StatelessWidget {
                 ),
                 SizedBox(
                   width: cardWidth,
+                  height: cardHeight,
                   child: _MetricCard(
                     label: 'TOTAL SESSIONS',
                     value: _formatNumber(stats.totalSessions),
@@ -1457,8 +1473,9 @@ class _StatsDashboard extends StatelessWidget {
                 ),
                 SizedBox(
                   width: cardWidth,
+                  height: cardHeight,
                   child: _MetricCard(
-                    label: 'AVERAGE SCORE',
+                    label: 'SCORE MEAN',
                     value: _formatAverage(stats.averageScore),
                     accent: NeuralTheme.primarySoft,
                     icon: Icons.bar_chart_rounded,
@@ -1466,8 +1483,9 @@ class _StatsDashboard extends StatelessWidget {
                 ),
                 SizedBox(
                   width: cardWidth,
+                  height: cardHeight,
                   child: _MetricCard(
-                    label: 'AVERAGE ROUNDS',
+                    label: 'ROUND MEAN',
                     value: _formatAverage(stats.averageRoundsReached),
                     accent: NeuralTheme.tertiary,
                     icon: Icons.route_rounded,
@@ -1475,6 +1493,7 @@ class _StatsDashboard extends StatelessWidget {
                 ),
                 SizedBox(
                   width: cardWidth,
+                  height: cardHeight,
                   child: _MetricCard(
                     label: 'FOCUS BEST',
                     value: _formatNumber(
@@ -1486,6 +1505,7 @@ class _StatsDashboard extends StatelessWidget {
                 ),
                 SizedBox(
                   width: cardWidth,
+                  height: cardHeight,
                   child: _MetricCard(
                     label: 'OVERDRIVE BEST',
                     value: _formatNumber(
@@ -1497,6 +1517,7 @@ class _StatsDashboard extends StatelessWidget {
                 ),
                 SizedBox(
                   width: cardWidth,
+                  height: cardHeight,
                   child: _MetricCard(
                     label: 'LAST PLAYED',
                     value: _formatDate(stats.lastPlayedAt),
@@ -1546,7 +1567,7 @@ class _MetricCard extends StatelessWidget {
               context,
             ).textTheme.labelSmall?.copyWith(color: NeuralTheme.textMuted),
           ),
-          const SizedBox(height: 8),
+          const Spacer(),
           Text(
             value,
             style: TextStyle(
