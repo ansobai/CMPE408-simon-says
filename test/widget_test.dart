@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:simon_says/main.dart';
+import 'package:simon_says/settings/local_settings_repository.dart';
+import 'package:simon_says/settings/neural_settings.dart';
 import 'package:simon_says/stats/local_stats_repository.dart';
 import 'package:simon_says/stats/stats_models.dart';
 
@@ -44,6 +46,7 @@ void main() {
     WidgetTester tester,
   ) async {
     final LocalStatsRepository repository = LocalStatsRepository();
+    final LocalSettingsRepository settingsRepository = LocalSettingsRepository();
     await repository.saveCompletedSession(
       GameSession(
         id: 'session-1',
@@ -80,8 +83,20 @@ void main() {
         endReason: SessionEndReason.wrongTile,
       ),
     );
+    await settingsRepository.saveSettings(
+      const NeuralSettings(
+        reducedMotion: true,
+        soundEnabled: false,
+        appTheme: AppThemeProfile.emberGlow,
+      ),
+    );
 
-    await tester.pumpWidget(const NeuralRecallApp());
+    await tester.pumpWidget(
+      NeuralRecallApp(
+        statsRepository: repository,
+        settingsRepository: settingsRepository,
+      ),
+    );
     expect(find.text('Loading neural profile...'), findsOneWidget);
 
     await tester.pumpAndSettle();
@@ -92,7 +107,7 @@ void main() {
     expect(find.text('BEST STREAK'), findsOneWidget);
     expect(find.text('8'), findsOneWidget);
     expect(find.text('BEST SCORE'), findsOneWidget);
-    expect(find.text('1,200'), findsOneWidget);
+    expect(find.text('1,200'), findsAtLeastNWidgets(2));
     expect(find.text('TOTAL SESSIONS'), findsOneWidget);
     expect(find.text('3'), findsOneWidget);
     expect(find.text('AVERAGE SCORE'), findsOneWidget);
@@ -107,5 +122,17 @@ void main() {
     expect(find.text('May 4, 2026'), findsOneWidget);
     expect(find.text('REACTION AVG'), findsNothing);
     expect(find.text('COMPLETION RATE'), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.settings_rounded).first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ember Glow'), findsOneWidget);
+    final Icon headerIcon = tester.widget<Icon>(
+      find.byIcon(Icons.memory_rounded).first,
+    );
+    expect(
+      headerIcon.color,
+      NeuralTheme.paletteFor(AppThemeProfile.emberGlow).primary,
+    );
   });
 }
