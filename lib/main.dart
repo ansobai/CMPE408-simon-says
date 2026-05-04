@@ -172,7 +172,6 @@ const double _navBarBaseHeight = 88;
 const double _mainMenuDesignWidth = 560;
 const double _mainMenuDesignHeight = 680;
 const double _statsScreenDesignWidth = 560;
-const double _statsScreenDesignHeight = 920;
 const double _gameScreenDesignWidth = 560;
 const double _gameScreenDesignHeight = 760;
 
@@ -201,6 +200,7 @@ class _FullscreenUiObserver with WidgetsBindingObserver {
 enum GameMode {
   focus(
     label: 'Focus Mode',
+    menuTitle: 'Calm Memory Run',
     subtitle: '4 Tiles | Relaxed Speed',
     scoreLabel: 'FOCUS MODE',
     gridSize: 2,
@@ -214,6 +214,7 @@ enum GameMode {
   ),
   overdrive(
     label: 'Overdrive Mode',
+    menuTitle: 'Rapid Reflex Run',
     subtitle: '9 Tiles | Rapid Sequence',
     scoreLabel: 'OVERDRIVE',
     gridSize: 3,
@@ -229,6 +230,7 @@ enum GameMode {
 
   const GameMode({
     required this.label,
+    required this.menuTitle,
     required this.subtitle,
     required this.scoreLabel,
     required this.gridSize,
@@ -243,6 +245,7 @@ enum GameMode {
   });
 
   final String label;
+  final String menuTitle;
   final String subtitle;
   final String scoreLabel;
   final int gridSize;
@@ -300,7 +303,7 @@ class MainMenuScreen extends StatelessWidget {
                         child: Column(
                           children: [
                             Text(
-                              'SYSTEM ACTIVE V2.0.4',
+                              'V2.0.4',
                               style: Theme.of(context).textTheme.labelSmall
                                   ?.copyWith(
                                     color: NeuralTheme.textDim.withValues(
@@ -418,14 +421,17 @@ class StatsScreen extends StatelessWidget {
                         24,
                         bottomNavHeight + 18,
                       ),
-                      child: _ScaleToFit(
-                        designWidth: _statsScreenDesignWidth,
-                        designHeight: _statsScreenDesignHeight,
-                        child: ValueListenableBuilder<int>(
-                          valueListenable: bestStreak,
-                          builder: (context, streak, _) {
-                            return _StatsDashboard(bestStreak: streak);
-                          },
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxWidth: _statsScreenDesignWidth,
+                          ),
+                          child: ValueListenableBuilder<int>(
+                            valueListenable: bestStreak,
+                            builder: (context, streak, _) {
+                              return _StatsDashboard(bestStreak: streak);
+                            },
+                          ),
                         ),
                       ),
                     ),
@@ -1035,9 +1041,6 @@ class _StatsDashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final int totalSessions = bestStreak * 3 + 42;
-    final int focusWins = (bestStreak * 2.4).round();
-    final int overdriveWins = (bestStreak * 1.6).round();
-    final int neuralScore = 8000 + bestStreak * 235;
     final int completionRate = (70 + bestStreak / 2).clamp(0, 98).round();
     final int reactionTime = (580 - bestStreak * 7).clamp(220, 580).round();
 
@@ -1045,140 +1048,66 @@ class _StatsDashboard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'PERFORMANCE ARCHIVE',
+          'PERFORMANCE',
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
             color: NeuralTheme.textDim.withValues(alpha: 0.52),
           ),
         ),
-        const SizedBox(height: 18),
-        const _StatsHeroCard(),
-        const SizedBox(height: 18),
-        _BestStreakCard(bestStreak: bestStreak),
-        const SizedBox(height: 18),
-        Row(
-          children: [
-            Expanded(
-              child: _MetricCard(
-                label: 'NEURAL SCORE',
-                value: _formatNumber(neuralScore),
-                accent: NeuralTheme.primary,
-                icon: Icons.bolt_rounded,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _MetricCard(
-                label: 'REACTION AVG',
-                value: '${reactionTime}ms',
-                accent: NeuralTheme.secondary,
-                icon: Icons.flash_on_rounded,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 18),
-        Row(
-          children: [
-            Expanded(
-              child: _MetricCard(
-                label: 'FOCUS CLEARS',
-                value: '$focusWins',
-                accent: NeuralTheme.primarySoft,
-                icon: Icons.psychology_alt_rounded,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _MetricCard(
-                label: 'OVERDRIVE CLEARS',
-                value: '$overdriveWins',
-                accent: NeuralTheme.secondarySoft,
-                icon: Icons.rocket_launch_rounded,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 18),
-        _StatsSummaryCard(
-          totalSessions: totalSessions,
-          completionRate: completionRate,
-          focusWins: focusWins,
-          overdriveWins: overdriveWins,
-        ),
-        const SizedBox(height: 18),
-        _NeuralStatusPanel(
-          reactionTime: reactionTime,
-          completionRate: completionRate,
-          bestStreak: bestStreak,
-        ),
-      ],
-    );
-  }
-}
-
-class _StatsHeroCard extends StatelessWidget {
-  const _StatsHeroCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(26),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1F2426), Color(0xFF151617)],
-        ),
-        border: Border.all(color: NeuralTheme.primary.withValues(alpha: 0.15)),
-        boxShadow: const [
-          BoxShadow(color: Color(0x1800E5FF), blurRadius: 28, spreadRadius: 1),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 74,
-            height: 74,
-            decoration: BoxDecoration(
-              color: NeuralTheme.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(22),
-            ),
-            child: const Icon(
-              Icons.insights_rounded,
-              color: NeuralTheme.primary,
-              size: 38,
-            ),
+        const SizedBox(height: 10),
+        const Text(
+          'Only the stats that matter, without the clutter.',
+          style: TextStyle(
+            color: NeuralTheme.textMuted,
+            fontSize: 14,
+            height: 1.4,
           ),
-          const SizedBox(width: 18),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        ),
+        const SizedBox(height: 20),
+        _BestStreakCard(bestStreak: bestStreak),
+        const SizedBox(height: 16),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final bool isTwoColumn = constraints.maxWidth >= 430;
+            final double cardWidth = isTwoColumn
+                ? (constraints.maxWidth - 16) / 2
+                : constraints.maxWidth;
+
+            return Wrap(
+              spacing: 16,
+              runSpacing: 16,
               children: [
-                Text(
-                  'PERFORMANCE SNAPSHOT',
-                  style: TextStyle(
-                    color: NeuralTheme.primarySoft,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.8,
+                SizedBox(
+                  width: cardWidth,
+                  child: _MetricCard(
+                    label: 'REACTION AVG',
+                    value: '$reactionTime ms',
+                    accent: NeuralTheme.secondary,
+                    icon: Icons.flash_on_rounded,
                   ),
                 ),
-                SizedBox(height: 8),
-                Text(
-                  'Live telemetry maps your streaks, speed, and mode performance into a single neural snapshot.',
-                  style: TextStyle(
-                    color: NeuralTheme.textMuted,
-                    fontSize: 14,
-                    height: 1.45,
+                SizedBox(
+                  width: cardWidth,
+                  child: _MetricCard(
+                    label: 'COMPLETION RATE',
+                    value: '$completionRate%',
+                    accent: NeuralTheme.primary,
+                    icon: Icons.track_changes_rounded,
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _MetricCard(
+                    label: 'TOTAL SESSIONS',
+                    value: _formatNumber(totalSessions),
+                    accent: NeuralTheme.primarySoft,
+                    icon: Icons.layers_rounded,
                   ),
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
+            );
+          },
+        ),
+      ],
     );
   }
 }
@@ -1209,7 +1138,7 @@ class _MetricCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _IconPlate(icon: icon, color: accent),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
           Text(
             label,
             style: Theme.of(
@@ -1221,170 +1150,13 @@ class _MetricCard extends StatelessWidget {
             value,
             style: TextStyle(
               color: accent,
-              fontSize: 28,
+              fontSize: 26,
               fontWeight: FontWeight.w800,
               letterSpacing: -1,
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _StatsSummaryCard extends StatelessWidget {
-  const _StatsSummaryCard({
-    required this.totalSessions,
-    required this.completionRate,
-    required this.focusWins,
-    required this.overdriveWins,
-  });
-
-  final int totalSessions;
-  final int completionRate;
-  final int focusWins;
-  final int overdriveWins;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: NeuralTheme.surfaceHigh.withValues(alpha: 0.90),
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: NeuralTheme.outline.withValues(alpha: 0.22)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'SESSION BREAKDOWN',
-            style: TextStyle(
-              color: NeuralTheme.text,
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 18),
-          _StatRow(label: 'Total sessions', value: '$totalSessions'),
-          const SizedBox(height: 12),
-          _StatRow(label: 'Completion rate', value: '$completionRate%'),
-          const SizedBox(height: 12),
-          _StatRow(label: 'Focus mode wins', value: '$focusWins'),
-          const SizedBox(height: 12),
-          _StatRow(label: 'Overdrive wins', value: '$overdriveWins'),
-        ],
-      ),
-    );
-  }
-}
-
-class _NeuralStatusPanel extends StatelessWidget {
-  const _NeuralStatusPanel({
-    required this.reactionTime,
-    required this.completionRate,
-    required this.bestStreak,
-  });
-
-  final int reactionTime;
-  final int completionRate;
-  final int bestStreak;
-
-  @override
-  Widget build(BuildContext context) {
-    final String rank = bestStreak >= 30
-        ? 'SYNAPTIC ELITE'
-        : bestStreak >= 20
-        ? 'HIGH FOCUS'
-        : 'RISING SIGNAL';
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: const Color(0xFF171A1B),
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(
-          color: NeuralTheme.secondary.withValues(alpha: 0.18),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const _IconPlate(
-                icon: Icons.hub_rounded,
-                color: NeuralTheme.secondary,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'NEURAL STATUS',
-                      style: TextStyle(
-                        color: NeuralTheme.text,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      rank,
-                      style: const TextStyle(
-                        color: NeuralTheme.secondarySoft,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.4,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'Your average response loop is holding at $reactionTime ms with a mission completion rate of $completionRate%. Current pattern stability is anchored by a best streak of $bestStreak nodes.',
-            style: const TextStyle(
-              color: NeuralTheme.textMuted,
-              fontSize: 14,
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatRow extends StatelessWidget {
-  const _StatRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(color: NeuralTheme.textMuted, fontSize: 14),
-          ),
-        ),
-        Text(
-          value,
-          style: const TextStyle(
-            color: NeuralTheme.text,
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -2173,7 +1945,7 @@ class _ModeButton extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      mode.label,
+                      mode.menuTitle,
                       style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.w800,

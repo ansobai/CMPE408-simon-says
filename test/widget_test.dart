@@ -6,8 +6,8 @@ void main() {
   testWidgets('Home screen renders mode cards', (WidgetTester tester) async {
     await tester.pumpWidget(const NeuralRecallApp());
 
-    expect(find.text('Focus Mode'), findsOneWidget);
-    expect(find.text('Overdrive Mode'), findsOneWidget);
-    expect(find.text('SYSTEM ACTIVE V2.0.4'), findsOneWidget);
+    expect(find.text('Calm Memory Run'), findsOneWidget);
+    expect(find.text('Rapid Reflex Run'), findsOneWidget);
+    expect(find.text('V2.0.4'), findsOneWidget);
   });
 }
