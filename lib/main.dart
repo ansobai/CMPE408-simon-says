@@ -302,16 +302,6 @@ class MainMenuScreen extends StatelessWidget {
                         designHeight: _mainMenuDesignHeight,
                         child: Column(
                           children: [
-                            Text(
-                              'V2.0.4',
-                              style: Theme.of(context).textTheme.labelSmall
-                                  ?.copyWith(
-                                    color: NeuralTheme.textDim.withValues(
-                                      alpha: 0.5,
-                                    ),
-                                  ),
-                            ),
-                            const SizedBox(height: 16),
                             const _HeroLogo(),
                             const SizedBox(height: 28),
                             _ModeButton(
@@ -325,6 +315,15 @@ class MainMenuScreen extends StatelessWidget {
                                   _openGame(context, GameMode.overdrive),
                             ),
                             const Spacer(),
+                            Text(
+                              'V1.0.0',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: NeuralTheme.textDim.withValues(
+                                      alpha: 0.5,
+                                    ),
+                                  ),
+                            ),
                           ],
                         ),
                       ),

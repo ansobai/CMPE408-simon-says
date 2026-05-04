@@ -8,6 +8,6 @@ void main() {
 
     expect(find.text('Calm Memory Run'), findsOneWidget);
     expect(find.text('Rapid Reflex Run'), findsOneWidget);
-    expect(find.text('V2.0.4'), findsOneWidget);
+    expect(find.text('V1.0.0'), findsOneWidget);
   });
 }
