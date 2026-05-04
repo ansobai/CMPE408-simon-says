@@ -394,6 +394,17 @@ Future<void> _configureFullscreenUi() async {
   );
 }
 
+Future<void> _configureEdgeToEdgeUi() async {
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ),
+  );
+}
+
 class _FullscreenUiObserver with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -565,7 +576,6 @@ class MainMenuScreen extends StatelessWidget {
       ),
     );
   }
-
 }
 
 class StatsScreen extends StatelessWidget {
@@ -1677,6 +1687,7 @@ class _GameScreenState extends State<GameScreen> {
   GamePhase _phase = GamePhase.booting;
   bool _isSubmitting = false;
   bool _didRecordCurrentSession = false;
+  bool? _lastAppliedFocusMode;
   DateTime? _sessionStartedAt;
 
   @override
@@ -2140,8 +2151,24 @@ class _GameScreenState extends State<GameScreen> {
   void dispose() {
     _sessionId += 1;
     _cancelInputTimer();
+    unawaited(_configureEdgeToEdgeUi());
     unawaited(_soundController.dispose());
     super.dispose();
+  }
+
+  void _syncSystemUi(bool isGameRunning) {
+    if (_lastAppliedFocusMode == isGameRunning) {
+      return;
+    }
+    _lastAppliedFocusMode = isGameRunning;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(
+        isGameRunning ? _configureFullscreenUi() : _configureEdgeToEdgeUi(),
+      );
+    });
   }
 
   @override
@@ -2150,6 +2177,7 @@ class _GameScreenState extends State<GameScreen> {
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
     final double bottomNavHeight = _navBarBaseHeight + bottomInset;
     final bool isGameRunning = _isGameRunning;
+    _syncSystemUi(isGameRunning);
     return Scaffold(
       body: DecoratedBox(
         decoration: BoxDecoration(color: NeuralTheme.background),
