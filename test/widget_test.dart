@@ -6,7 +6,7 @@ import 'package:simon_says/stats/stats_models.dart';
 import 'package:simon_says/stats/stats_repository.dart';
 
 void main() {
-  testWidgets('app loads persisted best streak before showing stats', (
+  testWidgets('stats screen shows persisted local metrics', (
     WidgetTester tester,
   ) async {
     final _FakeStatsRepository repository = _FakeStatsRepository(
@@ -37,6 +37,21 @@ void main() {
 
     expect(find.text('BEST STREAK'), findsOneWidget);
     expect(find.text('8'), findsOneWidget);
+    expect(find.text('BEST SCORE'), findsOneWidget);
+    expect(find.text('1,200'), findsOneWidget);
+    expect(find.text('TOTAL SESSIONS'), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
+    expect(find.text('AVERAGE SCORE'), findsOneWidget);
+    expect(find.text('800'), findsOneWidget);
+    expect(find.text('AVERAGE ROUNDS'), findsOneWidget);
+    expect(find.text('6'), findsOneWidget);
+    expect(find.text('FOCUS BEST'), findsOneWidget);
+    expect(find.text('OVERDRIVE BEST'), findsOneWidget);
+    expect(find.text('640'), findsOneWidget);
+    expect(find.text('LAST PLAYED'), findsOneWidget);
+    expect(find.text('May 4, 2026'), findsOneWidget);
+    expect(find.text('REACTION AVG'), findsNothing);
+    expect(find.text('COMPLETION RATE'), findsNothing);
   });
 }
 

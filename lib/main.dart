@@ -25,7 +25,9 @@ class NeuralRecallApp extends StatefulWidget {
 }
 
 class _NeuralRecallAppState extends State<NeuralRecallApp> {
-  final ValueNotifier<int> _bestStreak = ValueNotifier<int>(0);
+  final ValueNotifier<PlayerStats> _playerStats = ValueNotifier<PlayerStats>(
+    PlayerStats.empty(),
+  );
   final ValueNotifier<NeuralSettings> _settings = ValueNotifier<NeuralSettings>(
     const NeuralSettings(),
   );
@@ -52,7 +54,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
         return;
       }
 
-      _bestStreak.value = stats.bestStreak;
+      _playerStats.value = stats;
       setState(() {
         _isLoadingStats = false;
       });
@@ -66,13 +68,13 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
       return;
     }
 
-    _bestStreak.value = stats.bestStreak;
+    _playerStats.value = stats;
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(_fullscreenObserver);
-    _bestStreak.dispose();
+    _playerStats.dispose();
     _settings.dispose();
     super.dispose();
   }
@@ -114,7 +116,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
       home: _isLoadingStats
           ? const _StartupLoadingScreen()
           : MainMenuScreen(
-              bestStreak: _bestStreak,
+              playerStats: _playerStats,
               settings: _settings,
               onSessionCompleted: _saveCompletedSession,
             ),
@@ -333,12 +335,12 @@ extension on GameMode {
 class MainMenuScreen extends StatelessWidget {
   const MainMenuScreen({
     super.key,
-    required this.bestStreak,
+    required this.playerStats,
     required this.settings,
     required this.onSessionCompleted,
   });
 
-  final ValueNotifier<int> bestStreak;
+  final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
   final Future<void> Function(GameSession session) onSessionCompleted;
 
@@ -419,7 +421,7 @@ class MainMenuScreen extends StatelessWidget {
       MaterialPageRoute<void>(
         builder: (_) => GameScreen(
           mode: mode,
-          initialBestStreak: bestStreak.value,
+          initialBestStreak: playerStats.value.bestStreak,
           settings: settings.value,
           onSessionCompleted: onSessionCompleted,
         ),
@@ -431,7 +433,7 @@ class MainMenuScreen extends StatelessWidget {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) =>
-            SettingsScreen(bestStreak: bestStreak, settings: settings),
+            SettingsScreen(playerStats: playerStats, settings: settings),
       ),
     );
   }
@@ -439,7 +441,7 @@ class MainMenuScreen extends StatelessWidget {
   Future<void> _openStats(BuildContext context) {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => StatsScreen(bestStreak: bestStreak, settings: settings),
+        builder: (_) => StatsScreen(playerStats: playerStats, settings: settings),
       ),
     );
   }
@@ -459,11 +461,11 @@ class MainMenuScreen extends StatelessWidget {
 class StatsScreen extends StatelessWidget {
   const StatsScreen({
     super.key,
-    required this.bestStreak,
+    required this.playerStats,
     required this.settings,
   });
 
-  final ValueNotifier<int> bestStreak;
+  final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
 
   @override
@@ -494,10 +496,10 @@ class StatsScreen extends StatelessWidget {
                           constraints: const BoxConstraints(
                             maxWidth: _statsScreenDesignWidth,
                           ),
-                          child: ValueListenableBuilder<int>(
-                            valueListenable: bestStreak,
-                            builder: (context, streak, _) {
-                              return _StatsDashboard(bestStreak: streak);
+                          child: ValueListenableBuilder<PlayerStats>(
+                            valueListenable: playerStats,
+                            builder: (context, stats, _) {
+                              return _StatsDashboard(stats: stats);
                             },
                           ),
                         ),
@@ -519,7 +521,7 @@ class StatsScreen extends StatelessWidget {
                     Navigator.of(context).pushReplacement(
                       MaterialPageRoute<void>(
                         builder: (_) => SettingsScreen(
-                          bestStreak: bestStreak,
+                          playerStats: playerStats,
                           settings: settings,
                         ),
                       ),
@@ -538,11 +540,11 @@ class StatsScreen extends StatelessWidget {
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({
     super.key,
-    required this.bestStreak,
+    required this.playerStats,
     required this.settings,
   });
 
-  final ValueNotifier<int> bestStreak;
+  final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
 
   @override
@@ -564,9 +566,9 @@ class SettingsScreen extends StatelessWidget {
                     child: ValueListenableBuilder<NeuralSettings>(
                       valueListenable: settings,
                       builder: (context, currentSettings, _) {
-                        return ValueListenableBuilder<int>(
-                          valueListenable: bestStreak,
-                          builder: (context, streak, child) {
+                        return ValueListenableBuilder<PlayerStats>(
+                          valueListenable: playerStats,
+                          builder: (context, currentStats, child) {
                             return SingleChildScrollView(
                               padding: EdgeInsets.fromLTRB(
                                 24,
@@ -580,7 +582,7 @@ class SettingsScreen extends StatelessWidget {
                                     maxWidth: _statsScreenDesignWidth,
                                   ),
                                   child: _SettingsDashboard(
-                                    bestStreak: streak,
+                                    bestStreak: currentStats.bestStreak,
                                     settings: currentSettings,
                                     onSettingsChanged: (nextSettings) {
                                       settings.value = nextSettings;
@@ -609,7 +611,7 @@ class SettingsScreen extends StatelessWidget {
                     Navigator.of(context).pushReplacement(
                       MaterialPageRoute<void>(
                         builder: (_) => StatsScreen(
-                          bestStreak: bestStreak,
+                          playerStats: playerStats,
                           settings: settings,
                         ),
                       ),
@@ -1102,16 +1104,12 @@ class _PresetButton extends StatelessWidget {
 }
 
 class _StatsDashboard extends StatelessWidget {
-  const _StatsDashboard({required this.bestStreak});
+  const _StatsDashboard({required this.stats});
 
-  final int bestStreak;
+  final PlayerStats stats;
 
   @override
   Widget build(BuildContext context) {
-    final int totalSessions = bestStreak * 3 + 42;
-    final int completionRate = (70 + bestStreak / 2).clamp(0, 98).round();
-    final int reactionTime = (580 - bestStreak * 7).clamp(220, 580).round();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1122,8 +1120,8 @@ class _StatsDashboard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        const Text(
-          'Only the stats that matter, without the clutter.',
+        Text(
+          'Local training record from completed sessions saved on this device.',
           style: TextStyle(
             color: NeuralTheme.textMuted,
             fontSize: 14,
@@ -1131,7 +1129,7 @@ class _StatsDashboard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
-        _BestStreakCard(bestStreak: bestStreak),
+        _BestStreakCard(bestStreak: stats.bestStreak),
         const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
@@ -1147,28 +1145,68 @@ class _StatsDashboard extends StatelessWidget {
                 SizedBox(
                   width: cardWidth,
                   child: _MetricCard(
-                    label: 'REACTION AVG',
-                    value: '$reactionTime ms',
+                    label: 'BEST SCORE',
+                    value: _formatNumber(stats.bestScore),
                     accent: NeuralTheme.secondary,
-                    icon: Icons.flash_on_rounded,
-                  ),
-                ),
-                SizedBox(
-                  width: cardWidth,
-                  child: _MetricCard(
-                    label: 'COMPLETION RATE',
-                    value: '$completionRate%',
-                    accent: NeuralTheme.primary,
-                    icon: Icons.track_changes_rounded,
+                    icon: Icons.emoji_events_rounded,
                   ),
                 ),
                 SizedBox(
                   width: cardWidth,
                   child: _MetricCard(
                     label: 'TOTAL SESSIONS',
-                    value: _formatNumber(totalSessions),
-                    accent: NeuralTheme.primarySoft,
+                    value: _formatNumber(stats.totalSessions),
+                    accent: NeuralTheme.primary,
                     icon: Icons.layers_rounded,
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _MetricCard(
+                    label: 'AVERAGE SCORE',
+                    value: _formatAverage(stats.averageScore),
+                    accent: NeuralTheme.primarySoft,
+                    icon: Icons.bar_chart_rounded,
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _MetricCard(
+                    label: 'AVERAGE ROUNDS',
+                    value: _formatAverage(stats.averageRoundsReached),
+                    accent: NeuralTheme.tertiary,
+                    icon: Icons.route_rounded,
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _MetricCard(
+                    label: 'FOCUS BEST',
+                    value: _formatNumber(
+                      stats.bestScoreByMode[GameModeKey.focus] ?? 0,
+                    ),
+                    accent: NeuralTheme.primary,
+                    icon: Icons.auto_awesome_motion_rounded,
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _MetricCard(
+                    label: 'OVERDRIVE BEST',
+                    value: _formatNumber(
+                      stats.bestScoreByMode[GameModeKey.overdrive] ?? 0,
+                    ),
+                    accent: NeuralTheme.secondarySoft,
+                    icon: Icons.bolt_rounded,
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _MetricCard(
+                    label: 'LAST PLAYED',
+                    value: _formatDate(stats.lastPlayedAt),
+                    accent: NeuralTheme.primarySoft,
+                    icon: Icons.event_rounded,
                   ),
                 ),
               ],
@@ -3257,4 +3295,35 @@ String _formatNumber(int value) {
     }
   }
   return buffer.toString();
+}
+
+String _formatAverage(double value) {
+  if (value == value.roundToDouble()) {
+    return _formatNumber(value.round());
+  }
+
+  return value.toStringAsFixed(1);
+}
+
+String _formatDate(DateTime? value) {
+  if (value == null) {
+    return 'Never';
+  }
+
+  const List<String> months = <String>[
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  final DateTime localValue = value.toLocal();
+  return '${months[localValue.month - 1]} ${localValue.day}, ${localValue.year}';
 }
