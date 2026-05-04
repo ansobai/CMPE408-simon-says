@@ -1,294 +1,826 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:math' as math;
 
-void main() {
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'neural_sound_controller.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await _configureFullscreenUi();
   runApp(const NeuralRecallApp());
 }
 
-class NeuralRecallApp extends StatelessWidget {
+class NeuralRecallApp extends StatefulWidget {
   const NeuralRecallApp({super.key});
 
   @override
+  State<NeuralRecallApp> createState() => _NeuralRecallAppState();
+}
+
+class _NeuralRecallAppState extends State<NeuralRecallApp> {
+  final ValueNotifier<int> _bestStreak = ValueNotifier<int>(24);
+  final ValueNotifier<NeuralSettings> _settings = ValueNotifier<NeuralSettings>(
+    const NeuralSettings(),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(_fullscreenObserver);
+  }
+
+  void _updateBestStreak(int streak) {
+    if (streak > _bestStreak.value) {
+      _bestStreak.value = streak;
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(_fullscreenObserver);
+    _bestStreak.dispose();
+    _settings.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: NeuralRecallHomeScreen(),
-    );
-  }
-}
-
-class NeuralRecallHomeScreen extends StatelessWidget {
-  const NeuralRecallHomeScreen({super.key});
-
-  static const Color cyan = Color(0xFF08E4FF);
-  static const Color bgTop = Color(0xFF07090F);
-  static const Color bgBottom = Color(0xFF020309);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: bgBottom,
-      bottomNavigationBar: const _BottomDock(),
-      body: Stack(
-        children: [
-          const _BackgroundGlow(),
-          SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(22, 14, 22, 24),
-              child: Column(
-                children: const [
-                  _TopBar(),
-                  SizedBox(height: 52),
-                  _HeroSection(),
-                  SizedBox(height: 50),
-                  _StreakPanel(),
-                  SizedBox(height: 44),
-                  _ModeCard(
-                    title: 'Focus Mode',
-                    subtitle: '4 Tiles | Relaxed Speed',
-                    icon: Icons.filter_none_rounded,
-                    gradient: [Color(0xFF2D2E33), Color(0xFF22242A)],
-                    iconColor: Color(0xFF24D7EE),
-                    borderColor: Color(0x333A3D45),
-                  ),
-                  SizedBox(height: 24),
-                  _ModeCard(
-                    title: 'Overdrive Mode',
-                    subtitle: '9 Tiles | Rapid Sequence',
-                    icon: Icons.bolt_rounded,
-                    gradient: [Color(0xFF160A31), Color(0xFF110826)],
-                    iconColor: Color(0xFF8D71E9),
-                    borderColor: Color(0x66583CA1),
-                  ),
-                  SizedBox(height: 52),
-                  _StatusRow(),
-                  SizedBox(height: 28),
-                  _VersionTag(),
-                  SizedBox(height: 68),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BackgroundGlow extends StatelessWidget {
-  const _BackgroundGlow();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            NeuralRecallHomeScreen.bgTop,
-            NeuralRecallHomeScreen.bgBottom,
-          ],
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: NeuralTheme.background,
+        useMaterial3: true,
+        colorScheme: const ColorScheme.dark(
+          primary: NeuralTheme.primary,
+          secondary: NeuralTheme.secondary,
+          surface: NeuralTheme.surface,
         ),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            top: 120,
-            left: -90,
-            child: _blurCircle(250, const Color(0x3308E4FF)),
-          ),
-          Positioned(
-            top: 460,
-            right: -100,
-            child: _blurCircle(260, const Color(0x221A1455)),
-          ),
-          Positioned(
-            bottom: 120,
-            left: -100,
-            child: _blurCircle(260, const Color(0x201D0D4A)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _blurCircle(double size, Color color) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color,
-        boxShadow: [BoxShadow(color: color, blurRadius: 60, spreadRadius: 22)],
-      ),
-    );
-  }
-}
-
-class _TopBar extends StatelessWidget {
-  const _TopBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(
-          Icons.memory_rounded,
-          size: 30,
-          color: NeuralRecallHomeScreen.cyan,
-        ),
-        const SizedBox(width: 10),
-        Text(
-          'NEURAL RECALL',
-          style: TextStyle(
-            color: NeuralRecallHomeScreen.cyan,
-            fontSize: 38 * 0.34,
+        textTheme: const TextTheme(
+          headlineLarge: TextStyle(
+            fontSize: 42,
+            fontWeight: FontWeight.w900,
             fontStyle: FontStyle.italic,
-            letterSpacing: 0.8,
+            letterSpacing: -1.6,
+          ),
+          headlineMedium: TextStyle(
+            fontSize: 28,
             fontWeight: FontWeight.w800,
-            shadows: [
-              Shadow(
-                color: NeuralRecallHomeScreen.cyan.withValues(alpha: 0.45),
-                blurRadius: 10,
-              ),
-            ],
+            letterSpacing: -0.8,
+          ),
+          titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+          bodyMedium: TextStyle(fontSize: 14, height: 1.4),
+          labelSmall: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 2.2,
           ),
         ),
-        const Spacer(),
-        Icon(
-          Icons.settings_rounded,
-          color: Colors.white.withValues(alpha: 0.22),
-          size: 34,
-        ),
-      ],
+      ),
+      home: MainMenuScreen(
+        bestStreak: _bestStreak,
+        settings: _settings,
+        onNewBest: _updateBestStreak,
+      ),
     );
   }
 }
 
-class _HeroSection extends StatelessWidget {
-  const _HeroSection();
+class NeuralTheme {
+  static const Color background = Color(0xFF131313);
+  static const Color surface = Color(0xFF1C1B1B);
+  static const Color surfaceHigh = Color(0xFF2A2A2A);
+  static const Color surfaceHighest = Color(0xFF353534);
+  static const Color outline = Color(0xFF3B494C);
+  static const Color text = Color(0xFFE5E2E1);
+  static const Color textMuted = Color(0xFFBAC9CC);
+  static const Color textDim = Color(0xFF849396);
+  static const Color primary = Color(0xFF00E5FF);
+  static const Color primarySoft = Color(0xFFC3F5FF);
+  static const Color secondary = Color(0xFF7C4DFF);
+  static const Color secondarySoft = Color(0xFFCDBDFF);
+  static const Color tertiary = Color(0xFFFEC931);
+  static const Color error = Color(0xFFFFB4AB);
+  static const Color errorContainer = Color(0xFF93000A);
+}
+
+@immutable
+class NeuralSettings {
+  const NeuralSettings({
+    this.hapticsEnabled = true,
+    this.reducedMotion = false,
+    this.trainingHintsEnabled = true,
+    this.focusAssistEnabled = false,
+    this.confirmResetEnabled = true,
+  });
+
+  final bool hapticsEnabled;
+  final bool reducedMotion;
+  final bool trainingHintsEnabled;
+  final bool focusAssistEnabled;
+  final bool confirmResetEnabled;
+
+  NeuralSettings copyWith({
+    bool? hapticsEnabled,
+    bool? reducedMotion,
+    bool? trainingHintsEnabled,
+    bool? focusAssistEnabled,
+    bool? confirmResetEnabled,
+  }) {
+    return NeuralSettings(
+      hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
+      reducedMotion: reducedMotion ?? this.reducedMotion,
+      trainingHintsEnabled: trainingHintsEnabled ?? this.trainingHintsEnabled,
+      focusAssistEnabled: focusAssistEnabled ?? this.focusAssistEnabled,
+      confirmResetEnabled: confirmResetEnabled ?? this.confirmResetEnabled,
+    );
+  }
+
+  Duration tuneDuration(
+    Duration duration, {
+    double reducedFactor = 0.72,
+    int minMilliseconds = 60,
+  }) {
+    if (!reducedMotion) {
+      return duration;
+    }
+
+    final int scaledMs = math.max(
+      minMilliseconds,
+      (duration.inMilliseconds * reducedFactor).round(),
+    );
+    return Duration(milliseconds: scaledMs);
+  }
+
+  String get presetLabel {
+    if (focusAssistEnabled && trainingHintsEnabled && reducedMotion) {
+      return 'CALM';
+    }
+    if (!focusAssistEnabled &&
+        !trainingHintsEnabled &&
+        !confirmResetEnabled &&
+        !hapticsEnabled) {
+      return 'HARDCORE';
+    }
+    return 'STANDARD';
+  }
+}
+
+const double _navBarBaseHeight = 88;
+const double _mainMenuDesignWidth = 560;
+const double _mainMenuDesignHeight = 680;
+const double _statsScreenDesignWidth = 560;
+const double _statsScreenDesignHeight = 920;
+const double _gameScreenDesignWidth = 560;
+const double _gameScreenDesignHeight = 760;
+
+final _FullscreenUiObserver _fullscreenObserver = _FullscreenUiObserver();
+
+Future<void> _configureFullscreenUi() async {
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ),
+  );
+}
+
+class _FullscreenUiObserver with WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _configureFullscreenUi();
+    }
+  }
+}
+
+enum GameMode {
+  focus(
+    label: 'Focus Mode',
+    subtitle: '4 Tiles | Relaxed Speed',
+    scoreLabel: 'FOCUS MODE',
+    gridSize: 2,
+    accent: NeuralTheme.primary,
+    icon: Icons.auto_awesome_motion_rounded,
+    flashDuration: Duration(milliseconds: 560),
+    flashGap: Duration(milliseconds: 180),
+    roundLeadIn: Duration(milliseconds: 420),
+    pointsPerStep: 140,
+    roundBonus: 120,
+  ),
+  overdrive(
+    label: 'Overdrive Mode',
+    subtitle: '9 Tiles | Rapid Sequence',
+    scoreLabel: 'OVERDRIVE',
+    gridSize: 3,
+    accent: NeuralTheme.secondary,
+    icon: Icons.bolt_rounded,
+    flashDuration: Duration(milliseconds: 300),
+    flashGap: Duration(milliseconds: 90),
+    roundLeadIn: Duration(milliseconds: 240),
+    pointsPerStep: 260,
+    roundBonus: 220,
+    baseTapTimeout: Duration(milliseconds: 1800),
+  );
+
+  const GameMode({
+    required this.label,
+    required this.subtitle,
+    required this.scoreLabel,
+    required this.gridSize,
+    required this.accent,
+    required this.icon,
+    required this.flashDuration,
+    required this.flashGap,
+    required this.roundLeadIn,
+    required this.pointsPerStep,
+    required this.roundBonus,
+    this.baseTapTimeout,
+  });
+
+  final String label;
+  final String subtitle;
+  final String scoreLabel;
+  final int gridSize;
+  final Color accent;
+  final IconData icon;
+  final Duration flashDuration;
+  final Duration flashGap;
+  final Duration roundLeadIn;
+  final int pointsPerStep;
+  final int roundBonus;
+  final Duration? baseTapTimeout;
+}
+
+enum GamePhase { booting, showing, input, roundClear, failed }
+
+class MainMenuScreen extends StatelessWidget {
+  const MainMenuScreen({
+    super.key,
+    required this.bestStreak,
+    required this.settings,
+    required this.onNewBest,
+  });
+
+  final ValueNotifier<int> bestStreak;
+  final ValueNotifier<NeuralSettings> settings;
+  final ValueChanged<int> onNewBest;
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Positioned(
-          top: -8,
-          right: 80,
-          child: Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: const Color(0xFF9A89EE).withValues(alpha: 0.9),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF9A89EE).withValues(alpha: 0.48),
-                  blurRadius: 12,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
+    final double bottomInset = MediaQuery.paddingOf(context).bottom;
+    final double bottomNavHeight = 74 + math.max(12, bottomInset);
+    return Scaffold(
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF131313), Color(0xFF0E0E0E)],
           ),
         ),
-        Column(
+        child: Stack(
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: NeuralRecallHomeScreen.cyan.withValues(alpha: 0.38),
-                    blurRadius: 34,
-                    spreadRadius: 4,
+            const _BackgroundEffects(),
+            SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  NeuralTopBar(onAction: () => _openSettings(context)),
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(24, 8, 24, bottomNavHeight),
+                      child: _ScaleToFit(
+                        designWidth: _mainMenuDesignWidth,
+                        designHeight: _mainMenuDesignHeight,
+                        child: Column(
+                          children: [
+                            Text(
+                              'SYSTEM ACTIVE V2.0.4',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: NeuralTheme.textDim.withValues(
+                                      alpha: 0.5,
+                                    ),
+                                  ),
+                            ),
+                            const SizedBox(height: 16),
+                            const _HeroLogo(),
+                            const SizedBox(height: 28),
+                            _ModeButton(
+                              mode: GameMode.focus,
+                              onTap: () => _openGame(context, GameMode.focus),
+                            ),
+                            const SizedBox(height: 16),
+                            _ModeButton(
+                              mode: GameMode.overdrive,
+                              onTap: () =>
+                                  _openGame(context, GameMode.overdrive),
+                            ),
+                            const Spacer(),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ],
-              ),
-              child: const Icon(
-                Icons.psychology_alt_rounded,
-                size: 92,
-                color: NeuralRecallHomeScreen.cyan,
               ),
             ),
-            const SizedBox(height: 26),
-            Text(
-              'NEURAL\nRECALL',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: NeuralRecallHomeScreen.cyan,
-                fontSize: 72 * 0.34,
-                height: 1.02,
-                letterSpacing: 0.6,
-                fontWeight: FontWeight.w800,
-                fontStyle: FontStyle.italic,
-                shadows: [
-                  BoxShadow(
-                    color: NeuralRecallHomeScreen.cyan.withValues(alpha: 0.65),
-                    blurRadius: 18,
-                  ),
-                ],
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: NeuralBottomNav(
+                selected: NeuralNavItem.grid,
+                onItemSelected: (item) => _handleNavigation(context, item),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _openGame(BuildContext context, GameMode mode) {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => GameScreen(
+          mode: mode,
+          initialBestStreak: bestStreak.value,
+          settings: settings.value,
+          onNewBest: onNewBest,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openSettings(BuildContext context) {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            SettingsScreen(bestStreak: bestStreak, settings: settings),
+      ),
+    );
+  }
+
+  Future<void> _openStats(BuildContext context) {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => StatsScreen(bestStreak: bestStreak, settings: settings),
+      ),
+    );
+  }
+
+  void _handleNavigation(BuildContext context, NeuralNavItem item) {
+    if (item == NeuralNavItem.stats) {
+      _openStats(context);
+      return;
+    }
+
+    if (item == NeuralNavItem.settings) {
+      _openSettings(context);
+    }
+  }
+}
+
+class StatsScreen extends StatelessWidget {
+  const StatsScreen({
+    super.key,
+    required this.bestStreak,
+    required this.settings,
+  });
+
+  final ValueNotifier<int> bestStreak;
+  final ValueNotifier<NeuralSettings> settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final double bottomInset = MediaQuery.paddingOf(context).bottom;
+    final double bottomNavHeight = _navBarBaseHeight + bottomInset;
+    return Scaffold(
+      body: DecoratedBox(
+        decoration: const BoxDecoration(color: NeuralTheme.background),
+        child: Stack(
+          children: [
+            const _BackgroundEffects(),
+            SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  NeuralTopBar(onBack: () => Navigator.of(context).pop()),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(
+                        24,
+                        8,
+                        24,
+                        bottomNavHeight + 18,
+                      ),
+                      child: _ScaleToFit(
+                        designWidth: _statsScreenDesignWidth,
+                        designHeight: _statsScreenDesignHeight,
+                        child: ValueListenableBuilder<int>(
+                          valueListenable: bestStreak,
+                          builder: (context, streak, _) {
+                            return _StatsDashboard(bestStreak: streak);
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: NeuralBottomNav(
+                selected: NeuralNavItem.stats,
+                onItemSelected: (item) {
+                  if (item == NeuralNavItem.grid) {
+                    Navigator.of(context).pop();
+                  }
+                  if (item == NeuralNavItem.settings) {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute<void>(
+                        builder: (_) => SettingsScreen(
+                          bestStreak: bestStreak,
+                          settings: settings,
+                        ),
+                      ),
+                    );
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({
+    super.key,
+    required this.bestStreak,
+    required this.settings,
+  });
+
+  final ValueNotifier<int> bestStreak;
+  final ValueNotifier<NeuralSettings> settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final double bottomInset = MediaQuery.paddingOf(context).bottom;
+    final double bottomNavHeight = _navBarBaseHeight + bottomInset;
+    return Scaffold(
+      body: DecoratedBox(
+        decoration: const BoxDecoration(color: NeuralTheme.background),
+        child: Stack(
+          children: [
+            const _BackgroundEffects(),
+            SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  NeuralTopBar(onBack: () => Navigator.of(context).pop()),
+                  Expanded(
+                    child: ValueListenableBuilder<NeuralSettings>(
+                      valueListenable: settings,
+                      builder: (context, currentSettings, _) {
+                        return ValueListenableBuilder<int>(
+                          valueListenable: bestStreak,
+                          builder: (context, streak, child) {
+                            return SingleChildScrollView(
+                              padding: EdgeInsets.fromLTRB(
+                                24,
+                                8,
+                                24,
+                                bottomNavHeight + 18,
+                              ),
+                              child: Center(
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: _statsScreenDesignWidth,
+                                  ),
+                                  child: _SettingsDashboard(
+                                    bestStreak: streak,
+                                    settings: currentSettings,
+                                    onSettingsChanged: (nextSettings) {
+                                      settings.value = nextSettings;
+                                    },
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: NeuralBottomNav(
+                selected: NeuralNavItem.settings,
+                onItemSelected: (item) {
+                  if (item == NeuralNavItem.grid) {
+                    Navigator.of(context).pop();
+                  }
+                  if (item == NeuralNavItem.stats) {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute<void>(
+                        builder: (_) => StatsScreen(
+                          bestStreak: bestStreak,
+                          settings: settings,
+                        ),
+                      ),
+                    );
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsDashboard extends StatelessWidget {
+  const _SettingsDashboard({
+    required this.bestStreak,
+    required this.settings,
+    required this.onSettingsChanged,
+  });
+
+  final int bestStreak;
+  final NeuralSettings settings;
+  final ValueChanged<NeuralSettings> onSettingsChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'SYSTEM PREFERENCES',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: NeuralTheme.textDim.withValues(alpha: 0.52),
+          ),
+        ),
+        const SizedBox(height: 18),
+        _SettingsHeroCard(bestStreak: bestStreak, settings: settings),
+        const SizedBox(height: 22),
+        const _SettingsSectionTitle(
+          label: 'QUICK PRESETS',
+          subtitle: 'Switch the board profile in a single tap.',
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: _PresetButton(
+                label: 'CALM',
+                selected: settings.presetLabel == 'CALM',
+                accent: NeuralTheme.primary,
+                onTap: () {
+                  onSettingsChanged(
+                    const NeuralSettings(
+                      hapticsEnabled: true,
+                      reducedMotion: true,
+                      trainingHintsEnabled: true,
+                      focusAssistEnabled: true,
+                      confirmResetEnabled: true,
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _PresetButton(
+                label: 'STANDARD',
+                selected: settings.presetLabel == 'STANDARD',
+                accent: NeuralTheme.secondarySoft,
+                onTap: () {
+                  onSettingsChanged(const NeuralSettings());
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _PresetButton(
+                label: 'HARDCORE',
+                selected: settings.presetLabel == 'HARDCORE',
+                accent: NeuralTheme.tertiary,
+                onTap: () {
+                  onSettingsChanged(
+                    const NeuralSettings(
+                      hapticsEnabled: false,
+                      reducedMotion: false,
+                      trainingHintsEnabled: false,
+                      focusAssistEnabled: false,
+                      confirmResetEnabled: false,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        const _SettingsSectionTitle(
+          label: 'GAMEPLAY',
+          subtitle: 'Tune how much support the run gives you.',
+        ),
+        const SizedBox(height: 14),
+        _SettingsToggleCard(
+          icon: Icons.bolt_rounded,
+          title: 'Overdrive Focus Assist',
+          description:
+              'Extends the overdrive tap timer so late-round inputs stay readable.',
+          value: settings.focusAssistEnabled,
+          accent: NeuralTheme.secondarySoft,
+          onChanged: (enabled) {
+            onSettingsChanged(settings.copyWith(focusAssistEnabled: enabled));
+          },
+        ),
+        const SizedBox(height: 14),
+        _SettingsToggleCard(
+          icon: Icons.tips_and_updates_rounded,
+          title: 'Training Hints',
+          description:
+              'Shows the live guidance card under the board during rounds.',
+          value: settings.trainingHintsEnabled,
+          accent: NeuralTheme.primary,
+          onChanged: (enabled) {
+            onSettingsChanged(settings.copyWith(trainingHintsEnabled: enabled));
+          },
+        ),
+        const SizedBox(height: 14),
+        _SettingsToggleCard(
+          icon: Icons.restart_alt_rounded,
+          title: 'Confirm Reset',
+          description:
+              'Requires confirmation before wiping the current run from the game screen.',
+          value: settings.confirmResetEnabled,
+          accent: NeuralTheme.tertiary,
+          onChanged: (enabled) {
+            onSettingsChanged(settings.copyWith(confirmResetEnabled: enabled));
+          },
+        ),
+        const SizedBox(height: 24),
+        const _SettingsSectionTitle(
+          label: 'INTERFACE',
+          subtitle: 'Adjust feedback and motion intensity.',
+        ),
+        const SizedBox(height: 14),
+        _SettingsToggleCard(
+          icon: Icons.vibration_rounded,
+          title: 'Haptic Feedback',
+          description:
+              'Adds tactile pulses for sequence playback, correct taps, and failures.',
+          value: settings.hapticsEnabled,
+          accent: NeuralTheme.primarySoft,
+          onChanged: (enabled) {
+            onSettingsChanged(settings.copyWith(hapticsEnabled: enabled));
+          },
+        ),
+        const SizedBox(height: 14),
+        _SettingsToggleCard(
+          icon: Icons.motion_photos_off_rounded,
+          title: 'Reduced Motion',
+          description:
+              'Shortens flashes and transitions to keep the board calmer and snappier.',
+          value: settings.reducedMotion,
+          accent: NeuralTheme.textMuted,
+          onChanged: (enabled) {
+            onSettingsChanged(settings.copyWith(reducedMotion: enabled));
+          },
+        ),
+        const SizedBox(height: 18),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: NeuralTheme.surface.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: NeuralTheme.outline.withValues(alpha: 0.18),
+            ),
+          ),
+          child: const Text(
+            'Settings apply immediately and stay active for the current app session.',
+            style: TextStyle(
+              color: NeuralTheme.textMuted,
+              fontSize: 13,
+              height: 1.45,
+            ),
+          ),
+        ),
       ],
     );
   }
 }
 
-class _StreakPanel extends StatelessWidget {
-  const _StreakPanel();
+class _SettingsHeroCard extends StatelessWidget {
+  const _SettingsHeroCard({required this.bestStreak, required this.settings});
+
+  final int bestStreak;
+  final NeuralSettings settings;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 30),
+      padding: const EdgeInsets.all(26),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        color: Colors.black.withValues(alpha: 0.13),
-        border: Border.all(
-          color: NeuralRecallHomeScreen.cyan.withValues(alpha: 0.23),
-          width: 1,
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1D2326), Color(0xFF151617)],
         ),
+        border: Border.all(color: NeuralTheme.primary.withValues(alpha: 0.15)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x1600E5FF), blurRadius: 28, spreadRadius: 1),
+        ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'BEST STREAK',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.8),
-              letterSpacing: 3.6,
-              fontSize: 12 * 1.18,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 16),
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                '24',
-                style: TextStyle(
-                  color: NeuralRecallHomeScreen.cyan,
-                  fontSize: 66 * 0.34,
-                  fontWeight: FontWeight.w700,
-                  shadows: [
-                    BoxShadow(
-                      color: NeuralRecallHomeScreen.cyan.withValues(alpha: 0.6),
-                      blurRadius: 16,
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  color: NeuralTheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: const Icon(
+                  Icons.tune_rounded,
+                  color: NeuralTheme.primary,
+                  size: 34,
+                ),
+              ),
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'CONTROL DECK',
+                      style: TextStyle(
+                        color: NeuralTheme.primarySoft,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Preset ${settings.presetLabel} active. Best streak recorded: $bestStreak.',
+                      style: const TextStyle(
+                        color: NeuralTheme.textMuted,
+                        fontSize: 14,
+                        height: 1.45,
+                      ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
-              Text(
-                'NODES',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.55),
-                  fontSize: 16 * 1.12,
+            ],
+          ),
+          const SizedBox(height: 22),
+          Row(
+            children: [
+              Expanded(
+                child: _SettingsStatChip(
+                  label: 'BEST CHAIN',
+                  value: '$bestStreak',
+                  accent: NeuralTheme.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _SettingsStatChip(
+                  label: 'LIVE PROFILE',
+                  value: settings.presetLabel,
+                  accent: NeuralTheme.secondarySoft,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _SettingsStatChip(
+                  label: 'MOTION',
+                  value: settings.reducedMotion ? 'LOW' : 'FULL',
+                  accent: NeuralTheme.tertiary,
                 ),
               ),
             ],
@@ -299,22 +831,1257 @@ class _StreakPanel extends StatelessWidget {
   }
 }
 
-class _ModeCard extends StatelessWidget {
-  const _ModeCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.gradient,
-    required this.iconColor,
-    required this.borderColor,
+class _SettingsStatChip extends StatelessWidget {
+  const _SettingsStatChip({
+    required this.label,
+    required this.value,
+    required this.accent,
   });
 
-  final String title;
+  final String label;
+  final String value;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      decoration: BoxDecoration(
+        color: NeuralTheme.surface.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accent.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: NeuralTheme.textDim),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              color: accent,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsSectionTitle extends StatelessWidget {
+  const _SettingsSectionTitle({required this.label, required this.subtitle});
+
+  final String label;
   final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: NeuralTheme.textDim.withValues(alpha: 0.72),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          subtitle,
+          style: const TextStyle(
+            color: NeuralTheme.textMuted,
+            fontSize: 14,
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingsToggleCard extends StatelessWidget {
+  const _SettingsToggleCard({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.value,
+    required this.accent,
+    required this.onChanged,
+  });
+
   final IconData icon;
-  final List<Color> gradient;
-  final Color iconColor;
-  final Color borderColor;
+  final String title;
+  final String description;
+  final bool value;
+  final Color accent;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: NeuralTheme.surface.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: accent.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _IconPlate(icon: icon, color: accent),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: NeuralTheme.text,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  description,
+                  style: const TextStyle(
+                    color: NeuralTheme.textMuted,
+                    fontSize: 13,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeThumbColor: accent,
+            activeTrackColor: accent.withValues(alpha: 0.35),
+            inactiveThumbColor: NeuralTheme.textMuted,
+            inactiveTrackColor: NeuralTheme.surfaceHighest,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PresetButton extends StatelessWidget {
+  const _PresetButton({
+    required this.label,
+    required this.selected,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+          decoration: BoxDecoration(
+            color: selected
+                ? accent.withValues(alpha: 0.16)
+                : NeuralTheme.surface.withValues(alpha: 0.65),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected
+                  ? accent.withValues(alpha: 0.28)
+                  : NeuralTheme.outline.withValues(alpha: 0.16),
+            ),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: selected ? accent : NeuralTheme.textMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatsDashboard extends StatelessWidget {
+  const _StatsDashboard({required this.bestStreak});
+
+  final int bestStreak;
+
+  @override
+  Widget build(BuildContext context) {
+    final int totalSessions = bestStreak * 3 + 42;
+    final int focusWins = (bestStreak * 2.4).round();
+    final int overdriveWins = (bestStreak * 1.6).round();
+    final int neuralScore = 8000 + bestStreak * 235;
+    final int completionRate = (70 + bestStreak / 2).clamp(0, 98).round();
+    final int reactionTime = (580 - bestStreak * 7).clamp(220, 580).round();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'PERFORMANCE ARCHIVE',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: NeuralTheme.textDim.withValues(alpha: 0.52),
+          ),
+        ),
+        const SizedBox(height: 18),
+        const _StatsHeroCard(),
+        const SizedBox(height: 18),
+        _BestStreakCard(bestStreak: bestStreak),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            Expanded(
+              child: _MetricCard(
+                label: 'NEURAL SCORE',
+                value: _formatNumber(neuralScore),
+                accent: NeuralTheme.primary,
+                icon: Icons.bolt_rounded,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _MetricCard(
+                label: 'REACTION AVG',
+                value: '${reactionTime}ms',
+                accent: NeuralTheme.secondary,
+                icon: Icons.flash_on_rounded,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            Expanded(
+              child: _MetricCard(
+                label: 'FOCUS CLEARS',
+                value: '$focusWins',
+                accent: NeuralTheme.primarySoft,
+                icon: Icons.psychology_alt_rounded,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _MetricCard(
+                label: 'OVERDRIVE CLEARS',
+                value: '$overdriveWins',
+                accent: NeuralTheme.secondarySoft,
+                icon: Icons.rocket_launch_rounded,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        _StatsSummaryCard(
+          totalSessions: totalSessions,
+          completionRate: completionRate,
+          focusWins: focusWins,
+          overdriveWins: overdriveWins,
+        ),
+        const SizedBox(height: 18),
+        _NeuralStatusPanel(
+          reactionTime: reactionTime,
+          completionRate: completionRate,
+          bestStreak: bestStreak,
+        ),
+      ],
+    );
+  }
+}
+
+class _StatsHeroCard extends StatelessWidget {
+  const _StatsHeroCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(26),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1F2426), Color(0xFF151617)],
+        ),
+        border: Border.all(color: NeuralTheme.primary.withValues(alpha: 0.15)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x1800E5FF), blurRadius: 28, spreadRadius: 1),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 74,
+            height: 74,
+            decoration: BoxDecoration(
+              color: NeuralTheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: const Icon(
+              Icons.insights_rounded,
+              color: NeuralTheme.primary,
+              size: 38,
+            ),
+          ),
+          const SizedBox(width: 18),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'PERFORMANCE SNAPSHOT',
+                  style: TextStyle(
+                    color: NeuralTheme.primarySoft,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.8,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Live telemetry maps your streaks, speed, and mode performance into a single neural snapshot.',
+                  style: TextStyle(
+                    color: NeuralTheme.textMuted,
+                    fontSize: 14,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
+    required this.label,
+    required this.value,
+    required this.accent,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final Color accent;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: NeuralTheme.surface.withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: accent.withValues(alpha: 0.16)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _IconPlate(icon: icon, color: accent),
+          const SizedBox(height: 18),
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: NeuralTheme.textMuted),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              color: accent,
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatsSummaryCard extends StatelessWidget {
+  const _StatsSummaryCard({
+    required this.totalSessions,
+    required this.completionRate,
+    required this.focusWins,
+    required this.overdriveWins,
+  });
+
+  final int totalSessions;
+  final int completionRate;
+  final int focusWins;
+  final int overdriveWins;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: NeuralTheme.surfaceHigh.withValues(alpha: 0.90),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: NeuralTheme.outline.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'SESSION BREAKDOWN',
+            style: TextStyle(
+              color: NeuralTheme.text,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 18),
+          _StatRow(label: 'Total sessions', value: '$totalSessions'),
+          const SizedBox(height: 12),
+          _StatRow(label: 'Completion rate', value: '$completionRate%'),
+          const SizedBox(height: 12),
+          _StatRow(label: 'Focus mode wins', value: '$focusWins'),
+          const SizedBox(height: 12),
+          _StatRow(label: 'Overdrive wins', value: '$overdriveWins'),
+        ],
+      ),
+    );
+  }
+}
+
+class _NeuralStatusPanel extends StatelessWidget {
+  const _NeuralStatusPanel({
+    required this.reactionTime,
+    required this.completionRate,
+    required this.bestStreak,
+  });
+
+  final int reactionTime;
+  final int completionRate;
+  final int bestStreak;
+
+  @override
+  Widget build(BuildContext context) {
+    final String rank = bestStreak >= 30
+        ? 'SYNAPTIC ELITE'
+        : bestStreak >= 20
+        ? 'HIGH FOCUS'
+        : 'RISING SIGNAL';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF171A1B),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(
+          color: NeuralTheme.secondary.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const _IconPlate(
+                icon: Icons.hub_rounded,
+                color: NeuralTheme.secondary,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'NEURAL STATUS',
+                      style: TextStyle(
+                        color: NeuralTheme.text,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      rank,
+                      style: const TextStyle(
+                        color: NeuralTheme.secondarySoft,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Your average response loop is holding at $reactionTime ms with a mission completion rate of $completionRate%. Current pattern stability is anchored by a best streak of $bestStreak nodes.',
+            style: const TextStyle(
+              color: NeuralTheme.textMuted,
+              fontSize: 14,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatRow extends StatelessWidget {
+  const _StatRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(color: NeuralTheme.textMuted, fontSize: 14),
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            color: NeuralTheme.text,
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class GameScreen extends StatefulWidget {
+  const GameScreen({
+    super.key,
+    required this.mode,
+    required this.initialBestStreak,
+    required this.settings,
+    required this.onNewBest,
+  });
+
+  final GameMode mode;
+  final int initialBestStreak;
+  final NeuralSettings settings;
+  final ValueChanged<int> onNewBest;
+
+  @override
+  State<GameScreen> createState() => _GameScreenState();
+}
+
+class _GameScreenState extends State<GameScreen> {
+  late final math.Random _random;
+  late final int _tileCount;
+  late final NeuralSoundController _soundController;
+  final List<int> _sequence = <int>[];
+  Timer? _inputTimer;
+  int _sessionId = 0;
+  int? _highlightedTile;
+  int? _pressedTile;
+  int? _errorTile;
+  int _score = 0;
+  int _streak = 0;
+  int _bestRun = 0;
+  int _round = 0;
+  int _inputIndex = 0;
+  double _sequenceProgress = 0;
+  double _timerProgress = 1;
+  GamePhase _phase = GamePhase.booting;
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _random = math.Random();
+    _tileCount = widget.mode.gridSize * widget.mode.gridSize;
+    _soundController = NeuralSoundController();
+    unawaited(_soundController.warmUp());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_startNewGame());
+    });
+  }
+
+  int _nextTile(int current) {
+    if (_tileCount == 1) {
+      return current;
+    }
+    int next = _random.nextInt(_tileCount);
+    while (next == current) {
+      next = _random.nextInt(_tileCount);
+    }
+    return next;
+  }
+
+  Future<void> _startNewGame() async {
+    final int session = ++_sessionId;
+    _cancelInputTimer();
+    if (mounted) {
+      setState(() {
+        _sequence.clear();
+        _highlightedTile = null;
+        _pressedTile = null;
+        _errorTile = null;
+        _score = 0;
+        _streak = 0;
+        _bestRun = 0;
+        _round = 0;
+        _inputIndex = 0;
+        _sequenceProgress = 0;
+        _timerProgress = 1;
+        _phase = GamePhase.booting;
+      });
+    }
+
+    await Future<void>.delayed(
+      widget.settings.tuneDuration(
+        const Duration(milliseconds: 320),
+        reducedFactor: 0.75,
+        minMilliseconds: 160,
+      ),
+    );
+    if (!_sessionIsActive(session)) {
+      return;
+    }
+    await _startNextRound(session);
+  }
+
+  Future<void> _startNextRound(int session) async {
+    if (!_sessionIsActive(session)) {
+      return;
+    }
+
+    final int nextTile = _sequence.isEmpty
+        ? _random.nextInt(_tileCount)
+        : _nextTile(_sequence.last);
+
+    setState(() {
+      _sequence.add(nextTile);
+      _round = _sequence.length;
+      _inputIndex = 0;
+      _sequenceProgress = 0;
+      _timerProgress = 1;
+      _highlightedTile = null;
+      _pressedTile = null;
+      _errorTile = null;
+      _phase = GamePhase.showing;
+    });
+
+    await Future<void>.delayed(_roundLeadInDuration);
+    if (!_sessionIsActive(session)) {
+      return;
+    }
+
+    await _playSequence(session);
+    if (!_sessionIsActive(session)) {
+      return;
+    }
+    _beginInput(session);
+  }
+
+  Future<void> _playSequence(int session) async {
+    for (int index = 0; index < _sequence.length; index++) {
+      if (!_sessionIsActive(session)) {
+        return;
+      }
+
+      setState(() {
+        _highlightedTile = _sequence[index];
+        _pressedTile = null;
+        _errorTile = null;
+        _sequenceProgress = index / _sequence.length;
+      });
+      _playSequenceHaptic();
+      unawaited(_soundController.playSequenceStep(streak: _streak));
+
+      await Future<void>.delayed(_flashDuration);
+      if (!_sessionIsActive(session)) {
+        return;
+      }
+
+      setState(() {
+        _highlightedTile = null;
+        _sequenceProgress = (index + 1) / _sequence.length;
+      });
+
+      await Future<void>.delayed(_flashGapDuration);
+    }
+  }
+
+  void _beginInput(int session) {
+    if (!_sessionIsActive(session)) {
+      return;
+    }
+
+    setState(() {
+      _phase = GamePhase.input;
+      _sequenceProgress = 0;
+      _timerProgress = 1;
+    });
+    _armInputTimer(session);
+  }
+
+  Duration? _inputWindowForCurrentTurn() {
+    final Duration? baseTapTimeout = widget.mode.baseTapTimeout;
+    if (baseTapTimeout == null) {
+      return null;
+    }
+
+    int adjustedMs = math.max(
+      700,
+      baseTapTimeout.inMilliseconds - math.max(0, _round - 1) * 65,
+    );
+    if (widget.settings.focusAssistEnabled) {
+      adjustedMs = (adjustedMs * 1.25).round();
+    }
+    return Duration(milliseconds: adjustedMs);
+  }
+
+  void _armInputTimer(int session) {
+    _cancelInputTimer();
+    final Duration? inputWindow = _inputWindowForCurrentTurn();
+    if (inputWindow == null) {
+      return;
+    }
+
+    final DateTime deadline = DateTime.now().add(inputWindow);
+    _inputTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
+      if (!_sessionIsActive(session) || _phase != GamePhase.input) {
+        timer.cancel();
+        return;
+      }
+
+      final int remainingMs = deadline
+          .difference(DateTime.now())
+          .inMilliseconds;
+      if (remainingMs <= 0) {
+        timer.cancel();
+        if (!mounted || session != _sessionId) {
+          return;
+        }
+
+        setState(() {
+          _timerProgress = 0;
+        });
+        unawaited(_handleFailure(reason: 'Time expired'));
+        return;
+      }
+
+      if (mounted && session == _sessionId) {
+        setState(() {
+          _timerProgress = (remainingMs / inputWindow.inMilliseconds).clamp(
+            0.0,
+            1.0,
+          );
+        });
+      }
+    });
+  }
+
+  Future<void> _handleTileTap(int index) async {
+    if (_isSubmitting || _phase != GamePhase.input) {
+      return;
+    }
+
+    final int session = _sessionId;
+    final int expectedTile = _sequence[_inputIndex];
+    final bool isCorrectTile = index == expectedTile;
+    final bool completesRound =
+        isCorrectTile && _inputIndex + 1 >= _sequence.length;
+    _cancelInputTimer();
+
+    setState(() {
+      _pressedTile = index;
+      _errorTile = null;
+    });
+    _playTapHaptic();
+    unawaited(
+      _soundController.playTap(
+        streak: _streak + (isCorrectTile ? 1 : 0),
+        completedRound: completesRound,
+      ),
+    );
+
+    await Future<void>.delayed(
+      widget.settings.tuneDuration(
+        Duration(milliseconds: widget.mode == GameMode.focus ? 150 : 100),
+        reducedFactor: 0.72,
+        minMilliseconds: 70,
+      ),
+    );
+    if (!_sessionIsActive(session) || _phase != GamePhase.input) {
+      return;
+    }
+
+    if (index != expectedTile) {
+      setState(() {
+        _pressedTile = null;
+        _errorTile = index;
+      });
+      _playFailureHaptic();
+      await Future<void>.delayed(
+        widget.settings.tuneDuration(
+          const Duration(milliseconds: 180),
+          reducedFactor: 0.72,
+          minMilliseconds: 90,
+        ),
+      );
+      if (_sessionIsActive(session)) {
+        await _handleFailure(reason: 'Wrong tile', errorTile: index);
+      }
+      return;
+    }
+
+    final int nextInputIndex = _inputIndex + 1;
+    final bool completedRound = nextInputIndex >= _sequence.length;
+
+    setState(() {
+      _pressedTile = null;
+      _highlightedTile = expectedTile;
+      _inputIndex = nextInputIndex;
+      _sequenceProgress = nextInputIndex / _sequence.length;
+      _score += widget.mode.pointsPerStep;
+      _streak += 1;
+      _bestRun = math.max(_bestRun, _streak);
+      if (completedRound) {
+        _score += widget.mode.roundBonus;
+        _phase = GamePhase.roundClear;
+        _timerProgress = 1;
+      }
+    });
+    _playSuccessHaptic(completedRound: completedRound);
+
+    await Future<void>.delayed(
+      widget.settings.tuneDuration(
+        const Duration(milliseconds: 140),
+        reducedFactor: 0.7,
+        minMilliseconds: 70,
+      ),
+    );
+    if (!_sessionIsActive(session)) {
+      return;
+    }
+
+    setState(() {
+      _highlightedTile = null;
+    });
+
+    if (completedRound) {
+      await Future<void>.delayed(_roundLeadInDuration);
+      if (_sessionIsActive(session)) {
+        await _startNextRound(session);
+      }
+      return;
+    }
+
+    _armInputTimer(session);
+  }
+
+  Future<void> _handleFailure({required String reason, int? errorTile}) async {
+    if (_isSubmitting) {
+      return;
+    }
+
+    _cancelInputTimer();
+    setState(() {
+      _phase = GamePhase.failed;
+      _highlightedTile = null;
+      _pressedTile = null;
+      _errorTile = errorTile;
+      _sequenceProgress = 1;
+      _timerProgress = 0;
+    });
+
+    _isSubmitting = true;
+    final bool? restart = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => GameOverDialog(
+        mode: widget.mode,
+        score: _score,
+        bestRun: _bestRun,
+        roundReached: _round,
+        summary: reason,
+        newHighScore: _bestRun > widget.initialBestStreak,
+      ),
+    );
+    widget.onNewBest(_bestRun);
+    _isSubmitting = false;
+
+    if (!mounted) {
+      return;
+    }
+    if (restart ?? false) {
+      unawaited(_startNewGame());
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Duration get _flashDuration => widget.settings.tuneDuration(
+    widget.mode.flashDuration,
+    reducedFactor: 0.68,
+    minMilliseconds: 110,
+  );
+
+  Duration get _flashGapDuration => widget.settings.tuneDuration(
+    widget.mode.flashGap,
+    reducedFactor: 0.68,
+    minMilliseconds: 50,
+  );
+
+  Duration get _roundLeadInDuration => widget.settings.tuneDuration(
+    widget.mode.roundLeadIn,
+    reducedFactor: 0.72,
+    minMilliseconds: 140,
+  );
+
+  void _playSequenceHaptic() {
+    if (!widget.settings.hapticsEnabled) {
+      return;
+    }
+    unawaited(HapticFeedback.selectionClick());
+  }
+
+  void _playTapHaptic() {
+    if (!widget.settings.hapticsEnabled) {
+      return;
+    }
+    unawaited(HapticFeedback.lightImpact());
+  }
+
+  void _playSuccessHaptic({required bool completedRound}) {
+    if (!widget.settings.hapticsEnabled) {
+      return;
+    }
+    unawaited(
+      completedRound
+          ? HapticFeedback.mediumImpact()
+          : HapticFeedback.selectionClick(),
+    );
+  }
+
+  void _playFailureHaptic() {
+    if (!widget.settings.hapticsEnabled) {
+      return;
+    }
+    unawaited(HapticFeedback.heavyImpact());
+  }
+
+  bool _sessionIsActive(int session) {
+    return mounted && session == _sessionId && !_isSubmitting;
+  }
+
+  void _cancelInputTimer() {
+    _inputTimer?.cancel();
+    _inputTimer = null;
+  }
+
+  Future<void> _resetGame() async {
+    if (widget.settings.confirmResetEnabled) {
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => _ResetConfirmDialog(),
+      );
+      if (confirmed != true || !mounted) {
+        return;
+      }
+    }
+    unawaited(_startNewGame());
+  }
+
+  String get _phaseLabel {
+    switch (_phase) {
+      case GamePhase.booting:
+        return 'INITIALIZING';
+      case GamePhase.showing:
+        return 'WATCH';
+      case GamePhase.input:
+        return 'REPEAT';
+      case GamePhase.roundClear:
+        return 'LOCKED IN';
+      case GamePhase.failed:
+        return 'SIGNAL LOST';
+    }
+  }
+
+  @override
+  void dispose() {
+    _sessionId += 1;
+    _cancelInputTimer();
+    unawaited(_soundController.dispose());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isFocus = widget.mode == GameMode.focus;
+    final double bottomInset = MediaQuery.paddingOf(context).bottom;
+    final double bottomNavHeight = _navBarBaseHeight + bottomInset;
+    return Scaffold(
+      body: DecoratedBox(
+        decoration: const BoxDecoration(color: NeuralTheme.background),
+        child: Stack(
+          children: [
+            const _BackgroundEffects(),
+            SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  NeuralTopBar(onBack: () => Navigator.of(context).pop()),
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(24, 8, 24, bottomNavHeight),
+                      child: _ScaleToFit(
+                        designWidth: _gameScreenDesignWidth,
+                        designHeight: _gameScreenDesignHeight,
+                        child: Column(
+                          children: [
+                            if (isFocus)
+                              _FocusDashboard(
+                                score: _score,
+                                streak: _streak,
+                                round: _round,
+                                phaseLabel: _phaseLabel,
+                                progress: _sequenceProgress,
+                                onReset: () => unawaited(_resetGame()),
+                              )
+                            else
+                              _OverdriveDashboard(
+                                score: _score,
+                                streak: _streak,
+                                round: _round,
+                                phaseLabel: _phaseLabel,
+                                progress: _sequenceProgress,
+                                timerProgress: _timerProgress,
+                                onReset: () => unawaited(_resetGame()),
+                              ),
+                            const SizedBox(height: 20),
+                            _ModeProgress(
+                              mode: widget.mode,
+                              round: _round,
+                              phaseLabel: _phaseLabel,
+                              progress: _sequenceProgress,
+                              timerProgress:
+                                  _inputWindowForCurrentTurn() == null
+                                  ? null
+                                  : _timerProgress,
+                            ),
+                            const SizedBox(height: 24),
+                            _GameBoard(
+                              gridSize: widget.mode.gridSize,
+                              highlightedTile: _highlightedTile,
+                              pressedTile: _pressedTile,
+                              errorTile: _errorTile,
+                              accent: widget.mode.accent,
+                              icon: widget.mode.icon,
+                              enabled: _phase == GamePhase.input,
+                              onTap: _handleTileTap,
+                            ),
+                            const SizedBox(height: 28),
+                            if (widget.settings.trainingHintsEnabled)
+                              _ModeHintCard(
+                                mode: widget.mode,
+                                phase: _phase,
+                                round: _round,
+                                tapWindow: _inputWindowForCurrentTurn(),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Align(
+              alignment: Alignment.bottomCenter,
+              child: NeuralBottomNav(selected: NeuralNavItem.grid),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class NeuralTopBar extends StatelessWidget {
+  const NeuralTopBar({
+    super.key,
+    this.onBack,
+    this.onAction,
+    this.actionIcon = Icons.settings_rounded,
+  });
+
+  final VoidCallback? onBack;
+  final VoidCallback? onAction;
+  final IconData actionIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 48,
+            child: onBack == null
+                ? null
+                : _RoundIconButton(
+                    icon: Icons.arrow_back_rounded,
+                    color: NeuralTheme.surfaceHighest,
+                    iconColor: NeuralTheme.textMuted,
+                    onTap: onBack,
+                  ),
+          ),
+          const SizedBox(width: 12),
+          const Icon(Icons.memory_rounded, color: NeuralTheme.primary),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'NEURAL RECALL',
+              style: TextStyle(
+                color: NeuralTheme.primary,
+                fontWeight: FontWeight.w900,
+                fontStyle: FontStyle.italic,
+                letterSpacing: -0.6,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 48,
+            child: onAction == null
+                ? null
+                : _RoundIconButton(
+                    icon: actionIcon,
+                    color: NeuralTheme.surfaceHighest,
+                    iconColor: const Color(0xFF8AA4AA),
+                    onTap: onAction,
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScaleToFit extends StatelessWidget {
+  const _ScaleToFit({
+    required this.designWidth,
+    required this.designHeight,
+    required this.child,
+  });
+
+  final double designWidth;
+  final double designHeight;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.topCenter,
+        child: SizedBox(width: designWidth, height: designHeight, child: child),
+      ),
+    );
+  }
+}
+
+class _HeroLogo extends StatelessWidget {
+  const _HeroLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              top: -3,
+              right: -4,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: NeuralTheme.secondary,
+                  borderRadius: BorderRadius.circular(99),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0xAA7C4DFF), blurRadius: 12),
+                  ],
+                ),
+              ),
+            ),
+            const Icon(
+              Icons.psychology_alt_rounded,
+              size: 84,
+              color: NeuralTheme.primary,
+              shadows: [Shadow(color: Color(0x6600E5FF), blurRadius: 24)],
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        const Text(
+          'NEURAL\nRECALL',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: NeuralTheme.primary,
+            fontSize: 46,
+            height: 0.92,
+            fontWeight: FontWeight.w900,
+            fontStyle: FontStyle.italic,
+            letterSpacing: -2.2,
+            shadows: [Shadow(color: Color(0x6600E5FF), blurRadius: 18)],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BestStreakCard extends StatelessWidget {
+  const _BestStreakCard({required this.bestStreak});
+
+  final int bestStreak;
 
   @override
   Widget build(BuildContext context) {
@@ -322,146 +2089,1326 @@ class _ModeCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: gradient,
-        ),
-        border: Border.all(color: borderColor, width: 1.2),
+        color: NeuralTheme.surface.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: NeuralTheme.primary.withValues(alpha: 0.12)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x1100E5FF), blurRadius: 24, spreadRadius: 2),
+        ],
       ),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.86),
-                    fontSize: 24 * 0.34 * 2.5,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.72),
-                    fontSize: 13 * 1.28,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
+          Text(
+            'BEST STREAK',
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: NeuralTheme.textMuted),
           ),
-          Icon(icon, color: iconColor, size: 34),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '$bestStreak',
+                style: const TextStyle(
+                  color: NeuralTheme.primarySoft,
+                  fontSize: 38,
+                  fontWeight: FontWeight.w800,
+                  shadows: [Shadow(color: Color(0x5500E5FF), blurRadius: 16)],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Padding(
+                padding: EdgeInsets.only(bottom: 6),
+                child: Text(
+                  'NODES',
+                  style: TextStyle(
+                    color: Color(0x66C3F5FF),
+                    fontSize: 12,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
-class _StatusRow extends StatelessWidget {
-  const _StatusRow();
+class _ModeButton extends StatelessWidget {
+  const _ModeButton({required this.mode, required this.onTap});
+
+  final GameMode mode;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(
-          Icons.info_rounded,
-          size: 32,
-          color: Colors.white.withValues(alpha: 0.8),
+    final bool isOverdrive = mode == GameMode.overdrive;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: onTap,
+        child: Ink(
+          height: 142,
+          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 22),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            color: isOverdrive
+                ? const Color(0x185203D5)
+                : NeuralTheme.surfaceHigh,
+            border: Border.all(
+              color: isOverdrive
+                  ? NeuralTheme.secondary.withValues(alpha: 0.20)
+                  : NeuralTheme.outline.withValues(alpha: 0.25),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      mode.label,
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: isOverdrive
+                            ? NeuralTheme.secondarySoft
+                            : NeuralTheme.text,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      mode.subtitle,
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.35,
+                        color: isOverdrive
+                            ? NeuralTheme.secondarySoft.withValues(alpha: 0.56)
+                            : NeuralTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 20),
+              Icon(
+                mode.icon,
+                size: 38,
+                color: isOverdrive
+                    ? NeuralTheme.secondarySoft.withValues(alpha: 0.85)
+                    : NeuralTheme.primary.withValues(alpha: 0.8),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(width: 58),
-        Icon(
-          Icons.equalizer_rounded,
-          size: 36,
-          color: Colors.white.withValues(alpha: 0.8),
+      ),
+    );
+  }
+}
+
+class _FocusDashboard extends StatelessWidget {
+  const _FocusDashboard({
+    required this.score,
+    required this.streak,
+    required this.round,
+    required this.phaseLabel,
+    required this.progress,
+    required this.onReset,
+  });
+
+  final int score;
+  final int streak;
+  final int round;
+  final String phaseLabel;
+  final double progress;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: _MetricBlock(
+                label: 'CURRENT SCORE',
+                value: _formatNumber(score),
+                valueColor: NeuralTheme.primary,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: NeuralTheme.surfaceHigh,
+                borderRadius: BorderRadius.circular(99),
+                border: Border.all(
+                  color: NeuralTheme.outline.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.local_fire_department_rounded,
+                    color: NeuralTheme.tertiary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'R$round  |  $streak CHAIN',
+                    style: const TextStyle(
+                      color: NeuralTheme.tertiary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            _RoundIconButton(
+              icon: Icons.restart_alt_rounded,
+              color: NeuralTheme.surface,
+              iconColor: NeuralTheme.textMuted,
+              onTap: onReset,
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 7,
+            backgroundColor: NeuralTheme.surfaceHighest,
+            valueColor: const AlwaysStoppedAnimation<Color>(
+              NeuralTheme.primary,
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            phaseLabel,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: NeuralTheme.primarySoft.withValues(alpha: 0.75),
+            ),
+          ),
         ),
       ],
     );
   }
 }
 
-class _VersionTag extends StatelessWidget {
-  const _VersionTag();
+class _OverdriveDashboard extends StatelessWidget {
+  const _OverdriveDashboard({
+    required this.score,
+    required this.streak,
+    required this.round,
+    required this.phaseLabel,
+    required this.progress,
+    required this.timerProgress,
+    required this.onReset,
+  });
+
+  final int score;
+  final int streak;
+  final int round;
+  final String phaseLabel;
+  final double progress;
+  final double timerProgress;
+  final VoidCallback onReset;
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      'SYSTEM ACTIVE V2.0.4',
-      style: TextStyle(
-        color: Colors.white.withValues(alpha: 0.2),
-        fontSize: 13 * 1.08,
-        letterSpacing: 2,
+    return Column(
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: _MetricBlock(
+                label: 'CURRENT SCORE',
+                value: _formatNumber(score),
+                valueColor: NeuralTheme.primarySoft,
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: NeuralTheme.secondary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(99),
+                    border: Border.all(
+                      color: NeuralTheme.secondarySoft.withValues(alpha: 0.15),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.bolt_rounded,
+                        color: NeuralTheme.secondarySoft,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'R$round  |  X$streak',
+                        style: const TextStyle(
+                          color: NeuralTheme.secondarySoft,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: onReset,
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('RESET SEQUENCE'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: NeuralTheme.textMuted,
+                    textStyle: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.3,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 6,
+            backgroundColor: NeuralTheme.surfaceHighest,
+            valueColor: const AlwaysStoppedAnimation<Color>(
+              NeuralTheme.secondarySoft,
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                phaseLabel,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: NeuralTheme.secondarySoft.withValues(alpha: 0.80),
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 92,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: timerProgress,
+                  minHeight: 6,
+                  backgroundColor: NeuralTheme.surfaceHighest,
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    NeuralTheme.tertiary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _MetricBlock extends StatelessWidget {
+  const _MetricBlock({
+    required this.label,
+    required this.value,
+    required this.valueColor,
+  });
+
+  final String label;
+  final String value;
+  final Color valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: Theme.of(
+            context,
+          ).textTheme.labelSmall?.copyWith(color: NeuralTheme.textMuted),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor,
+            fontSize: 40,
+            fontWeight: FontWeight.w900,
+            fontStyle: FontStyle.italic,
+            height: 0.95,
+            shadows: [
+              Shadow(color: valueColor.withValues(alpha: 0.30), blurRadius: 18),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ModeProgress extends StatelessWidget {
+  const _ModeProgress({
+    required this.mode,
+    required this.round,
+    required this.phaseLabel,
+    required this.progress,
+    this.timerProgress,
+  });
+
+  final GameMode mode;
+  final int round;
+  final String phaseLabel;
+  final double progress;
+  final double? timerProgress;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: Container(
+                  height: 4,
+                  color: NeuralTheme.surfaceHighest,
+                  alignment: Alignment.centerLeft,
+                  child: FractionallySizedBox(
+                    widthFactor: progress,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: mode == GameMode.focus
+                              ? const [NeuralTheme.primary, Color(0xFF00DAF3)]
+                              : const [
+                                  NeuralTheme.primary,
+                                  NeuralTheme.secondary,
+                                ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              mode.scoreLabel,
+              style: TextStyle(
+                color: mode == GameMode.focus
+                    ? NeuralTheme.primary
+                    : NeuralTheme.primarySoft,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.8,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Text(
+              round == 0 ? 'ROUND 0' : 'ROUND $round',
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(color: NeuralTheme.textMuted),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                phaseLabel,
+                textAlign: TextAlign.center,
+                style: Theme.of(
+                  context,
+                ).textTheme.labelSmall?.copyWith(color: NeuralTheme.textDim),
+              ),
+            ),
+            if (timerProgress != null)
+              SizedBox(
+                width: 64,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: timerProgress,
+                    minHeight: 4,
+                    backgroundColor: NeuralTheme.surfaceHighest,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      NeuralTheme.tertiary,
+                    ),
+                  ),
+                ),
+              )
+            else
+              Text(
+                'UNTIMED',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: NeuralTheme.primarySoft.withValues(alpha: 0.65),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _GameBoard extends StatelessWidget {
+  const _GameBoard({
+    required this.gridSize,
+    required this.highlightedTile,
+    required this.pressedTile,
+    required this.errorTile,
+    required this.accent,
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final int gridSize;
+  final int? highlightedTile;
+  final int? pressedTile;
+  final int? errorTile;
+  final Color accent;
+  final IconData icon;
+  final bool enabled;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 1,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: NeuralTheme.surface,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x22000000),
+              blurRadius: 28,
+              offset: Offset(0, 12),
+            ),
+          ],
+        ),
+        child: GridView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: gridSize * gridSize,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: gridSize,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+          ),
+          itemBuilder: (context, index) {
+            final bool active =
+                index == highlightedTile || index == pressedTile;
+            return _BoardTile(
+              active: active,
+              error: index == errorTile,
+              accent: accent,
+              icon: icon,
+              enabled: enabled,
+              onTap: enabled ? () => onTap(index) : null,
+            );
+          },
+        ),
       ),
     );
   }
 }
 
-class _BottomDock extends StatelessWidget {
-  const _BottomDock();
+class _BoardTile extends StatelessWidget {
+  const _BoardTile({
+    required this.active,
+    required this.error,
+    required this.accent,
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final bool active;
+  final bool error;
+  final Color accent;
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          color: error
+              ? NeuralTheme.errorContainer.withValues(alpha: 0.90)
+              : active
+              ? accent
+              : NeuralTheme.surfaceHigh,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: error
+                ? NeuralTheme.error.withValues(alpha: 0.40)
+                : active
+                ? NeuralTheme.primarySoft.withValues(alpha: 0.30)
+                : NeuralTheme.outline.withValues(alpha: 0.12),
+            width: active || error ? 2 : 1,
+          ),
+          boxShadow: active || error
+              ? [
+                  BoxShadow(
+                    color: (error ? NeuralTheme.error : accent).withValues(
+                      alpha: 0.45,
+                    ),
+                    blurRadius: 26,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : null,
+        ),
+        child: Center(
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 180),
+            opacity: active || error
+                ? 1
+                : enabled
+                ? 0.24
+                : 0.12,
+            child: Icon(
+              error
+                  ? Icons.close_rounded
+                  : active
+                  ? icon
+                  : Icons.grid_4x4_rounded,
+              size: active || error ? 38 : 24,
+              color: active || error ? Colors.white : NeuralTheme.textDim,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ModeHintCard extends StatelessWidget {
+  const _ModeHintCard({
+    required this.mode,
+    required this.phase,
+    required this.round,
+    required this.tapWindow,
+  });
+
+  final GameMode mode;
+  final GamePhase phase;
+  final int round;
+  final Duration? tapWindow;
+
+  String get _title {
+    if (mode == GameMode.focus) {
+      return phase == GamePhase.input ? 'FOCUS LOOP' : 'PATTERN BRIEF';
+    }
+    return phase == GamePhase.input ? 'OVERDRIVE LIVE' : 'RAPID SYNC';
+  }
+
+  String get _message {
+    switch (phase) {
+      case GamePhase.booting:
+        return 'Calibrating the board. The first pattern is loading now.';
+      case GamePhase.showing:
+        return mode == GameMode.focus
+            ? 'Watch the sequence carefully. One new tile is appended every round.'
+            : 'The sequence plays at high speed. Track the pattern before the board unlocks.';
+      case GamePhase.input:
+        if (mode == GameMode.focus) {
+          return 'Repeat the full pattern in order. Focus mode has no timer, so precision matters more than speed.';
+        }
+        final int tapWindowMs = tapWindow?.inMilliseconds ?? 0;
+        return 'Repeat the pattern before the timer burns down. Current tap window: ${tapWindowMs}ms.';
+      case GamePhase.roundClear:
+        return 'Round $round completed. Prepare for one more step in the chain.';
+      case GamePhase.failed:
+        return 'Sequence lost. Reset the loop and rebuild the chain from round one.';
+    }
+  }
+
+  IconData get _icon {
+    if (mode == GameMode.focus) {
+      return Icons.psychology_rounded;
+    }
+    return phase == GamePhase.input
+        ? Icons.flash_on_rounded
+        : Icons.rocket_launch_rounded;
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 98,
-      padding: const EdgeInsets.symmetric(horizontal: 28),
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF090D14).withValues(alpha: 0.95),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-        border: Border.all(
-          color: NeuralRecallHomeScreen.cyan.withValues(alpha: 0.18),
-          width: 1,
-        ),
+        color: NeuralTheme.surface.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: NeuralTheme.outline.withValues(alpha: 0.18)),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: const [
-          _DockIcon(icon: Icons.grid_view_rounded, selected: true),
-          _DockIcon(icon: Icons.bar_chart_rounded),
-          _DockIcon(icon: Icons.settings_rounded),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _IconPlate(
+            icon: _icon,
+            color: mode == GameMode.focus
+                ? NeuralTheme.secondary
+                : NeuralTheme.primary,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _title,
+                  style: const TextStyle(
+                    color: NeuralTheme.text,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _message,
+                  style: const TextStyle(
+                    color: NeuralTheme.textMuted,
+                    fontSize: 13,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _DockIcon extends StatelessWidget {
-  const _DockIcon({required this.icon, this.selected = false});
-
-  final IconData icon;
-  final bool selected;
+class _ResetConfirmDialog extends StatelessWidget {
+  const _ResetConfirmDialog();
 
   @override
   Widget build(BuildContext context) {
-    final Color tint = selected
-        ? NeuralRecallHomeScreen.cyan
-        : Colors.white.withValues(alpha: 0.22);
-
-    return Container(
-      width: 52,
-      height: 52,
-      decoration: BoxDecoration(
-        color: selected
-            ? NeuralRecallHomeScreen.cyan.withValues(alpha: 0.14)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: selected
-            ? [
-                BoxShadow(
-                  color: NeuralRecallHomeScreen.cyan.withValues(alpha: 0.38),
-                  blurRadius: 22,
-                  spreadRadius: 1,
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: NeuralTheme.surface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: NeuralTheme.outline.withValues(alpha: 0.24),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'RESET CURRENT RUN?',
+              style: TextStyle(
+                color: NeuralTheme.text,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.6,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Your active score, round, and chain will be cleared immediately.',
+              style: TextStyle(
+                color: NeuralTheme.textMuted,
+                fontSize: 14,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: NeuralTheme.textMuted,
+                      side: BorderSide(
+                        color: NeuralTheme.outline.withValues(alpha: 0.28),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text('KEEP RUNNING'),
+                  ),
                 ),
-              ]
-            : null,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: NeuralTheme.primary,
+                      foregroundColor: const Color(0xFF00363D),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'RESET',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-      child: Icon(icon, color: tint, size: 32),
     );
   }
+}
+
+class GameOverDialog extends StatelessWidget {
+  const GameOverDialog({
+    super.key,
+    required this.mode,
+    required this.score,
+    required this.bestRun,
+    required this.roundReached,
+    required this.summary,
+    required this.newHighScore,
+  });
+
+  final GameMode mode;
+  final int score;
+  final int bestRun;
+  final int roundReached;
+  final String summary;
+  final bool newHighScore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 380),
+        padding: const EdgeInsets.all(28),
+        decoration: BoxDecoration(
+          color: NeuralTheme.surface,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(
+            color: NeuralTheme.outline.withValues(alpha: 0.22),
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x2200E5FF),
+              blurRadius: 28,
+              spreadRadius: 2,
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              top: -90,
+              right: -90,
+              child: _GlowOrb(
+                size: 180,
+                color: NeuralTheme.secondary.withValues(alpha: 0.13),
+              ),
+            ),
+            Positioned(
+              bottom: -90,
+              left: -90,
+              child: _GlowOrb(
+                size: 180,
+                color: NeuralTheme.primary.withValues(alpha: 0.08),
+              ),
+            ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: NeuralTheme.errorContainer.withValues(alpha: 0.28),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: NeuralTheme.error.withValues(alpha: 0.28),
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.heart_broken_rounded,
+                    color: NeuralTheme.error,
+                    size: 30,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                const Text(
+                  'NEURAL LINK SEVERED',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: NeuralTheme.text,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    fontStyle: FontStyle.italic,
+                    letterSpacing: -0.8,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  width: 48,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: NeuralTheme.primary,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(height: 28),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: mode.accent.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: mode.accent.withValues(alpha: 0.22),
+                    ),
+                  ),
+                  child: Text(
+                    mode.label.toUpperCase(),
+                    style: TextStyle(
+                      color: mode == GameMode.focus
+                          ? NeuralTheme.primarySoft
+                          : NeuralTheme.secondarySoft,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'FINAL SCORE',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: NeuralTheme.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _formatNumber(score),
+                  style: const TextStyle(
+                    color: NeuralTheme.text,
+                    fontSize: 46,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -1.8,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (newHighScore)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: NeuralTheme.secondary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: NeuralTheme.secondarySoft.withValues(
+                          alpha: 0.20,
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(
+                          Icons.stars_rounded,
+                          color: NeuralTheme.secondarySoft,
+                          size: 16,
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'NEW HIGH SCORE',
+                          style: TextStyle(
+                            color: NeuralTheme.secondarySoft,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                Text(
+                  summary,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: NeuralTheme.textMuted,
+                    fontSize: 14,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 26),
+                Text(
+                  'Best chain: $bestRun inputs  |  Round reached: $roundReached',
+                  style: const TextStyle(
+                    color: NeuralTheme.textMuted,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 26),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: NeuralTheme.primary,
+                      foregroundColor: const Color(0xFF00363D),
+                      padding: const EdgeInsets.symmetric(vertical: 18),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: const Text(
+                      'REBOOT',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: NeuralTheme.textMuted,
+                      side: BorderSide(
+                        color: NeuralTheme.outline.withValues(alpha: 0.30),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 18),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: const Text(
+                      'MAIN MENU',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    _TinyPulse(active: true),
+                    SizedBox(width: 6),
+                    _TinyPulse(active: false),
+                    SizedBox(width: 6),
+                    _TinyPulse(active: false),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+enum NeuralNavItem { grid, stats, settings }
+
+class NeuralBottomNav extends StatelessWidget {
+  const NeuralBottomNav({
+    super.key,
+    required this.selected,
+    this.onItemSelected,
+  });
+
+  final NeuralNavItem selected;
+  final ValueChanged<NeuralNavItem>? onItemSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final double bottomInset = MediaQuery.paddingOf(context).bottom;
+    return Container(
+      padding: EdgeInsets.fromLTRB(24, 10, 24, math.max(12, bottomInset)),
+      decoration: BoxDecoration(
+        color: NeuralTheme.background.withValues(alpha: 0.92),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border.all(color: NeuralTheme.primary.withValues(alpha: 0.14)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _NavIcon(
+            icon: Icons.grid_view_rounded,
+            selected: selected == NeuralNavItem.grid,
+            onTap: () => onItemSelected?.call(NeuralNavItem.grid),
+          ),
+          _NavIcon(
+            icon: Icons.stacked_bar_chart_rounded,
+            selected: selected == NeuralNavItem.stats,
+            onTap: () => onItemSelected?.call(NeuralNavItem.stats),
+          ),
+          _NavIcon(
+            icon: Icons.settings_rounded,
+            selected: selected == NeuralNavItem.settings,
+            onTap: () => onItemSelected?.call(NeuralNavItem.settings),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NavIcon extends StatelessWidget {
+  const _NavIcon({required this.icon, required this.selected, this.onTap});
+
+  final IconData icon;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Ink(
+          width: 54,
+          height: 54,
+          decoration: BoxDecoration(
+            color: selected
+                ? NeuralTheme.primary.withValues(alpha: 0.10)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: selected
+                ? const [BoxShadow(color: Color(0x3300E5FF), blurRadius: 18)]
+                : null,
+          ),
+          child: Icon(
+            icon,
+            color: selected ? NeuralTheme.primary : const Color(0xFF5D5D5D),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoundIconButton extends StatelessWidget {
+  const _RoundIconButton({
+    required this.icon,
+    required this.color,
+    required this.iconColor,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final Color iconColor;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Ink(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Icon(icon, color: iconColor),
+      ),
+    );
+  }
+}
+
+class _IconPlate extends StatelessWidget {
+  const _IconPlate({required this.icon, required this.color});
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Icon(icon, color: color),
+    );
+  }
+}
+
+class _BackgroundEffects extends StatelessWidget {
+  const _BackgroundEffects();
+
+  @override
+  Widget build(BuildContext context) {
+    return const IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned(
+            top: -120,
+            right: -80,
+            child: _GlowOrb(size: 280, color: Color(0x1100E5FF)),
+          ),
+          Positioned(
+            bottom: -80,
+            left: -100,
+            child: _GlowOrb(size: 240, color: Color(0x147C4DFF)),
+          ),
+          Positioned.fill(child: _GridOverlay()),
+        ],
+      ),
+    );
+  }
+}
+
+class _GlowOrb extends StatelessWidget {
+  const _GlowOrb({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        boxShadow: [BoxShadow(color: color, blurRadius: 120, spreadRadius: 24)],
+      ),
+    );
+  }
+}
+
+class _GridOverlay extends StatelessWidget {
+  const _GridOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: 0.035,
+      child: CustomPaint(
+        painter: _DotGridPainter(),
+        child: const SizedBox.expand(),
+      ),
+    );
+  }
+}
+
+class _DotGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    const double spacing = 40;
+    final Paint paint = Paint()..color = Colors.white;
+    for (double x = 0; x < size.width; x += spacing) {
+      for (double y = 0; y < size.height; y += spacing) {
+        canvas.drawCircle(Offset(x, y), 1.1, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _TinyPulse extends StatelessWidget {
+  const _TinyPulse({required this.active});
+
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 6,
+      height: 6,
+      decoration: BoxDecoration(
+        color: active
+            ? NeuralTheme.secondary
+            : NeuralTheme.secondarySoft.withValues(alpha: 0.30),
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
+String _formatNumber(int value) {
+  final String digits = value.toString();
+  final StringBuffer buffer = StringBuffer();
+  for (int i = 0; i < digits.length; i++) {
+    final int position = digits.length - i;
+    buffer.write(digits[i]);
+    if (position > 1 && position % 3 == 1) {
+      buffer.write(',');
+    }
+  }
+  return buffer.toString();
 }
