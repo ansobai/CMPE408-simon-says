@@ -81,45 +81,22 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: NeuralTheme.background,
-        useMaterial3: true,
-        colorScheme: const ColorScheme.dark(
-          primary: NeuralTheme.primary,
-          secondary: NeuralTheme.secondary,
-          surface: NeuralTheme.surface,
-        ),
-        textTheme: const TextTheme(
-          headlineLarge: TextStyle(
-            fontSize: 42,
-            fontWeight: FontWeight.w900,
-            fontStyle: FontStyle.italic,
-            letterSpacing: -1.6,
-          ),
-          headlineMedium: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.8,
-          ),
-          titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-          bodyMedium: TextStyle(fontSize: 14, height: 1.4),
-          labelSmall: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 2.2,
-          ),
-        ),
-      ),
-      home: _isLoadingStats
-          ? const _StartupLoadingScreen()
-          : MainMenuScreen(
-              playerStats: _playerStats,
-              settings: _settings,
-              onSessionCompleted: _saveCompletedSession,
-            ),
+    return ValueListenableBuilder<NeuralSettings>(
+      valueListenable: _settings,
+      builder: (context, currentSettings, _) {
+        NeuralTheme.activate(currentSettings.appTheme);
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: NeuralTheme.materialTheme,
+          home: _isLoadingStats
+              ? const _StartupLoadingScreen()
+              : MainMenuScreen(
+                  playerStats: _playerStats,
+                  settings: _settings,
+                  onSessionCompleted: _saveCompletedSession,
+                ),
+        );
+      },
     );
   }
 }
@@ -129,7 +106,7 @@ class _StartupLoadingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: NeuralTheme.background,
       body: Center(
         child: Column(
@@ -148,6 +125,35 @@ class _StartupLoadingScreen extends StatelessWidget {
   }
 }
 
+enum AppThemeProfile { neuralBlue, emberGlow, mintCircuit }
+
+@immutable
+class AppThemePalette {
+  const AppThemePalette({
+    required this.label,
+    required this.primary,
+    required this.primarySoft,
+    required this.secondary,
+    required this.secondarySoft,
+    required this.tertiary,
+    required this.primaryGlow,
+    required this.secondaryGlow,
+    required this.backgroundBottom,
+    required this.onAccent,
+  });
+
+  final String label;
+  final Color primary;
+  final Color primarySoft;
+  final Color secondary;
+  final Color secondarySoft;
+  final Color tertiary;
+  final Color primaryGlow;
+  final Color secondaryGlow;
+  final Color backgroundBottom;
+  final Color onAccent;
+}
+
 class NeuralTheme {
   static const Color background = Color(0xFF131313);
   static const Color surface = Color(0xFF1C1B1B);
@@ -157,13 +163,105 @@ class NeuralTheme {
   static const Color text = Color(0xFFE5E2E1);
   static const Color textMuted = Color(0xFFBAC9CC);
   static const Color textDim = Color(0xFF849396);
-  static const Color primary = Color(0xFF00E5FF);
-  static const Color primarySoft = Color(0xFFC3F5FF);
-  static const Color secondary = Color(0xFF7C4DFF);
-  static const Color secondarySoft = Color(0xFFCDBDFF);
-  static const Color tertiary = Color(0xFFFEC931);
   static const Color error = Color(0xFFFFB4AB);
   static const Color errorContainer = Color(0xFF93000A);
+
+  static const Map<AppThemeProfile, AppThemePalette> _palettes =
+      <AppThemeProfile, AppThemePalette>{
+        AppThemeProfile.neuralBlue: AppThemePalette(
+          label: 'Neural Blue',
+          primary: Color(0xFF00E5FF),
+          primarySoft: Color(0xFFC3F5FF),
+          secondary: Color(0xFF7C4DFF),
+          secondarySoft: Color(0xFFCDBDFF),
+          tertiary: Color(0xFFFEC931),
+          primaryGlow: Color(0x3300E5FF),
+          secondaryGlow: Color(0x267C4DFF),
+          backgroundBottom: Color(0xFF0E0E0E),
+          onAccent: Color(0xFF00363D),
+        ),
+        AppThemeProfile.emberGlow: AppThemePalette(
+          label: 'Ember Glow',
+          primary: Color(0xFFFF8A65),
+          primarySoft: Color(0xFFFFD2C3),
+          secondary: Color(0xFFFFC857),
+          secondarySoft: Color(0xFFFFE4A5),
+          tertiary: Color(0xFF7EE0C5),
+          primaryGlow: Color(0x33FF8A65),
+          secondaryGlow: Color(0x29FFC857),
+          backgroundBottom: Color(0xFF120E0D),
+          onAccent: Color(0xFF4A1906),
+        ),
+        AppThemeProfile.mintCircuit: AppThemePalette(
+          label: 'Mint Circuit',
+          primary: Color(0xFF5BF2C5),
+          primarySoft: Color(0xFFD1FFF1),
+          secondary: Color(0xFF4FC3F7),
+          secondarySoft: Color(0xFFCBEFFF),
+          tertiary: Color(0xFFFFB86C),
+          primaryGlow: Color(0x305BF2C5),
+          secondaryGlow: Color(0x264FC3F7),
+          backgroundBottom: Color(0xFF0C1110),
+          onAccent: Color(0xFF00382C),
+        ),
+      };
+
+  static AppThemeProfile _activeProfile = AppThemeProfile.neuralBlue;
+
+  static void activate(AppThemeProfile profile) {
+    _activeProfile = profile;
+  }
+
+  static AppThemePalette paletteFor(AppThemeProfile profile) {
+    return _palettes[profile]!;
+  }
+
+  static AppThemePalette get palette => _palettes[_activeProfile]!;
+
+  static Color get primary => palette.primary;
+  static Color get primarySoft => palette.primarySoft;
+  static Color get secondary => palette.secondary;
+  static Color get secondarySoft => palette.secondarySoft;
+  static Color get tertiary => palette.tertiary;
+  static Color get primaryGlow => palette.primaryGlow;
+  static Color get secondaryGlow => palette.secondaryGlow;
+  static Color get backgroundBottom => palette.backgroundBottom;
+  static Color get onAccent => palette.onAccent;
+
+  static ThemeData get materialTheme {
+    return ThemeData(
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: background,
+      useMaterial3: true,
+      colorScheme: ColorScheme.dark(
+        primary: primary,
+        secondary: secondary,
+        tertiary: tertiary,
+        surface: surface,
+        onPrimary: onAccent,
+      ),
+      textTheme: const TextTheme(
+        headlineLarge: TextStyle(
+          fontSize: 42,
+          fontWeight: FontWeight.w900,
+          fontStyle: FontStyle.italic,
+          letterSpacing: -1.6,
+        ),
+        headlineMedium: TextStyle(
+          fontSize: 28,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.8,
+        ),
+        titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+        bodyMedium: TextStyle(fontSize: 14, height: 1.4),
+        labelSmall: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 2.2,
+        ),
+      ),
+    );
+  }
 }
 
 @immutable
@@ -172,29 +270,45 @@ class NeuralSettings {
     this.hapticsEnabled = true,
     this.reducedMotion = false,
     this.trainingHintsEnabled = true,
-    this.focusAssistEnabled = false,
     this.confirmResetEnabled = true,
+    this.soundEnabled = true,
+    this.soundLevel = 0.76,
+    this.sequenceSpeed = 1.0,
+    this.overdriveWindowScale = 1.0,
+    this.appTheme = AppThemeProfile.neuralBlue,
   });
 
   final bool hapticsEnabled;
   final bool reducedMotion;
   final bool trainingHintsEnabled;
-  final bool focusAssistEnabled;
   final bool confirmResetEnabled;
+  final bool soundEnabled;
+  final double soundLevel;
+  final double sequenceSpeed;
+  final double overdriveWindowScale;
+  final AppThemeProfile appTheme;
 
   NeuralSettings copyWith({
     bool? hapticsEnabled,
     bool? reducedMotion,
     bool? trainingHintsEnabled,
-    bool? focusAssistEnabled,
     bool? confirmResetEnabled,
+    bool? soundEnabled,
+    double? soundLevel,
+    double? sequenceSpeed,
+    double? overdriveWindowScale,
+    AppThemeProfile? appTheme,
   }) {
     return NeuralSettings(
       hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
       reducedMotion: reducedMotion ?? this.reducedMotion,
       trainingHintsEnabled: trainingHintsEnabled ?? this.trainingHintsEnabled,
-      focusAssistEnabled: focusAssistEnabled ?? this.focusAssistEnabled,
       confirmResetEnabled: confirmResetEnabled ?? this.confirmResetEnabled,
+      soundEnabled: soundEnabled ?? this.soundEnabled,
+      soundLevel: soundLevel ?? this.soundLevel,
+      sequenceSpeed: sequenceSpeed ?? this.sequenceSpeed,
+      overdriveWindowScale: overdriveWindowScale ?? this.overdriveWindowScale,
+      appTheme: appTheme ?? this.appTheme,
     );
   }
 
@@ -204,27 +318,54 @@ class NeuralSettings {
     int minMilliseconds = 60,
   }) {
     if (!reducedMotion) {
-      return duration;
+      final int adjustedMs = math.max(
+        minMilliseconds,
+        (duration.inMilliseconds / sequenceSpeed).round(),
+      );
+      return Duration(milliseconds: adjustedMs);
     }
 
     final int scaledMs = math.max(
       minMilliseconds,
-      (duration.inMilliseconds * reducedFactor).round(),
+      ((duration.inMilliseconds * reducedFactor) / sequenceSpeed).round(),
     );
     return Duration(milliseconds: scaledMs);
   }
 
-  String get presetLabel {
-    if (focusAssistEnabled && trainingHintsEnabled && reducedMotion) {
-      return 'CALM';
+  Duration tuneOverdriveWindow(
+    Duration baseTapTimeout, {
+    required int round,
+    int decayPerRound = 65,
+    int minMilliseconds = 700,
+  }) {
+    final int adjustedMs = math.max(
+      minMilliseconds,
+      baseTapTimeout.inMilliseconds - math.max(0, round - 1) * decayPerRound,
+    );
+    return Duration(milliseconds: (adjustedMs * overdriveWindowScale).round());
+  }
+
+  double get effectiveSoundLevel =>
+      soundEnabled ? soundLevel.clamp(0.0, 1.0) : 0.0;
+
+  String get paceLabel {
+    if (sequenceSpeed < 0.95) {
+      return 'Steady';
     }
-    if (!focusAssistEnabled &&
-        !trainingHintsEnabled &&
-        !confirmResetEnabled &&
-        !hapticsEnabled) {
-      return 'HARDCORE';
+    if (sequenceSpeed > 1.08) {
+      return 'Fast';
     }
-    return 'STANDARD';
+    return 'Balanced';
+  }
+
+  String get overdriveLabel {
+    if (overdriveWindowScale < 0.95) {
+      return 'Tight';
+    }
+    if (overdriveWindowScale > 1.08) {
+      return 'Forgiving';
+    }
+    return 'Standard';
   }
 }
 
@@ -264,7 +405,6 @@ enum GameMode {
     subtitle: '4 Tiles | Relaxed Speed',
     scoreLabel: 'FOCUS MODE',
     gridSize: 2,
-    accent: NeuralTheme.primary,
     icon: Icons.auto_awesome_motion_rounded,
     flashDuration: Duration(milliseconds: 560),
     flashGap: Duration(milliseconds: 180),
@@ -278,7 +418,6 @@ enum GameMode {
     subtitle: '9 Tiles | Rapid Sequence',
     scoreLabel: 'OVERDRIVE',
     gridSize: 3,
-    accent: NeuralTheme.secondary,
     icon: Icons.bolt_rounded,
     flashDuration: Duration(milliseconds: 300),
     flashGap: Duration(milliseconds: 90),
@@ -294,7 +433,6 @@ enum GameMode {
     required this.subtitle,
     required this.scoreLabel,
     required this.gridSize,
-    required this.accent,
     required this.icon,
     required this.flashDuration,
     required this.flashGap,
@@ -309,7 +447,6 @@ enum GameMode {
   final String subtitle;
   final String scoreLabel;
   final int gridSize;
-  final Color accent;
   final IconData icon;
   final Duration flashDuration;
   final Duration flashGap;
@@ -317,6 +454,9 @@ enum GameMode {
   final int pointsPerStep;
   final int roundBonus;
   final Duration? baseTapTimeout;
+
+  Color get accent =>
+      this == GameMode.focus ? NeuralTheme.primary : NeuralTheme.secondary;
 }
 
 enum GamePhase { booting, showing, input, roundClear, failed }
@@ -388,9 +528,7 @@ class MainMenuScreen extends StatelessWidget {
                             const Spacer(),
                             Text(
                               'V1.0.0',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelSmall
+                              style: Theme.of(context).textTheme.labelSmall
                                   ?.copyWith(
                                     color: NeuralTheme.textDim.withValues(
                                       alpha: 0.5,
@@ -475,67 +613,73 @@ class StatsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
     final double bottomNavHeight = _navBarBaseHeight + bottomInset;
-    return Scaffold(
-      body: DecoratedBox(
-        decoration: const BoxDecoration(color: NeuralTheme.background),
-        child: Stack(
-          children: [
-            const _BackgroundEffects(),
-            SafeArea(
-              bottom: false,
-              child: Column(
-                children: [
-                  NeuralTopBar(onBack: () => Navigator.of(context).pop()),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: EdgeInsets.fromLTRB(
-                        24,
-                        8,
-                        24,
-                        bottomNavHeight + 18,
-                      ),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            maxWidth: _statsScreenDesignWidth,
+    return ValueListenableBuilder<NeuralSettings>(
+      valueListenable: settings,
+      builder: (context, currentSettings, _) {
+        NeuralTheme.activate(currentSettings.appTheme);
+        return Scaffold(
+          body: DecoratedBox(
+            decoration: BoxDecoration(color: NeuralTheme.background),
+            child: Stack(
+              children: [
+                const _BackgroundEffects(),
+                SafeArea(
+                  bottom: false,
+                  child: Column(
+                    children: [
+                      NeuralTopBar(onBack: () => Navigator.of(context).pop()),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: EdgeInsets.fromLTRB(
+                            24,
+                            8,
+                            24,
+                            bottomNavHeight + 18,
                           ),
-                          child: ValueListenableBuilder<PlayerStats>(
-                            valueListenable: playerStats,
-                            builder: (context, stats, _) {
-                              return _StatsDashboard(stats: stats);
-                            },
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxWidth: _statsScreenDesignWidth,
+                              ),
+                              child: ValueListenableBuilder<PlayerStats>(
+                                valueListenable: playerStats,
+                                builder: (context, stats, _) {
+                                  return _StatsDashboard(stats: stats);
+                                },
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: NeuralBottomNav(
+                    selected: NeuralNavItem.stats,
+                    onItemSelected: (item) {
+                      if (item == NeuralNavItem.grid) {
+                        Navigator.of(context).pop();
+                      }
+                      if (item == NeuralNavItem.settings) {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute<void>(
+                            builder: (_) => SettingsScreen(
+                              playerStats: playerStats,
+                              settings: settings,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ),
+              ],
             ),
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: NeuralBottomNav(
-                selected: NeuralNavItem.stats,
-                onItemSelected: (item) {
-                  if (item == NeuralNavItem.grid) {
-                    Navigator.of(context).pop();
-                  }
-                  if (item == NeuralNavItem.settings) {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute<void>(
-                        builder: (_) => SettingsScreen(
-                          playerStats: playerStats,
-                          settings: settings,
-                        ),
-                      ),
-                    );
-                  }
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -554,22 +698,23 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
     final double bottomNavHeight = _navBarBaseHeight + bottomInset;
-    return Scaffold(
-      body: DecoratedBox(
-        decoration: const BoxDecoration(color: NeuralTheme.background),
-        child: Stack(
-          children: [
-            const _BackgroundEffects(),
-            SafeArea(
-              bottom: false,
-              child: Column(
-                children: [
-                  NeuralTopBar(onBack: () => Navigator.of(context).pop()),
-                  Expanded(
-                    child: ValueListenableBuilder<NeuralSettings>(
-                      valueListenable: settings,
-                      builder: (context, currentSettings, _) {
-                        return ValueListenableBuilder<PlayerStats>(
+    return ValueListenableBuilder<NeuralSettings>(
+      valueListenable: settings,
+      builder: (context, currentSettings, _) {
+        NeuralTheme.activate(currentSettings.appTheme);
+        return Scaffold(
+          body: DecoratedBox(
+            decoration: BoxDecoration(color: NeuralTheme.background),
+            child: Stack(
+              children: [
+                const _BackgroundEffects(),
+                SafeArea(
+                  bottom: false,
+                  child: Column(
+                    children: [
+                      NeuralTopBar(onBack: () => Navigator.of(context).pop()),
+                      Expanded(
+                        child: ValueListenableBuilder<PlayerStats>(
                           valueListenable: playerStats,
                           builder: (context, currentStats, child) {
                             return SingleChildScrollView(
@@ -595,37 +740,37 @@ class SettingsScreen extends StatelessWidget {
                               ),
                             );
                           },
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: NeuralBottomNav(
-                selected: NeuralNavItem.settings,
-                onItemSelected: (item) {
-                  if (item == NeuralNavItem.grid) {
-                    Navigator.of(context).pop();
-                  }
-                  if (item == NeuralNavItem.stats) {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute<void>(
-                        builder: (_) => StatsScreen(
-                          playerStats: playerStats,
-                          settings: settings,
                         ),
                       ),
-                    );
-                  }
-                },
-              ),
+                    ],
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: NeuralBottomNav(
+                    selected: NeuralNavItem.settings,
+                    onItemSelected: (item) {
+                      if (item == NeuralNavItem.grid) {
+                        Navigator.of(context).pop();
+                      }
+                      if (item == NeuralNavItem.stats) {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute<void>(
+                            builder: (_) => StatsScreen(
+                              playerStats: playerStats,
+                              settings: settings,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -647,86 +792,85 @@ class _SettingsDashboard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'SYSTEM PREFERENCES',
+          'APP SETTINGS',
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: NeuralTheme.textDim.withValues(alpha: 0.52),
-              ),
+            color: NeuralTheme.textDim.withValues(alpha: 0.52),
+          ),
         ),
         const SizedBox(height: 18),
         _SettingsHeroCard(bestStreak: bestStreak, settings: settings),
         const SizedBox(height: 22),
         const _SettingsSectionTitle(
-          label: 'QUICK PRESETS',
-          subtitle: 'Switch the board profile in a single tap.',
+          label: 'APPEARANCE',
+          subtitle: 'Pick the app palette and visual intensity.',
         ),
         const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: _PresetButton(
-                label: 'CALM',
-                selected: settings.presetLabel == 'CALM',
-                accent: NeuralTheme.primary,
-                onTap: () {
-                  onSettingsChanged(
-                    const NeuralSettings(
-                      hapticsEnabled: true,
-                      reducedMotion: true,
-                      trainingHintsEnabled: true,
-                      focusAssistEnabled: true,
-                      confirmResetEnabled: true,
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _PresetButton(
-                label: 'STANDARD',
-                selected: settings.presetLabel == 'STANDARD',
-                accent: NeuralTheme.secondarySoft,
-                onTap: () {
-                  onSettingsChanged(const NeuralSettings());
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _PresetButton(
-                label: 'HARDCORE',
-                selected: settings.presetLabel == 'HARDCORE',
-                accent: NeuralTheme.tertiary,
-                onTap: () {
-                  onSettingsChanged(
-                    const NeuralSettings(
-                      hapticsEnabled: false,
-                      reducedMotion: false,
-                      trainingHintsEnabled: false,
-                      focusAssistEnabled: false,
-                      confirmResetEnabled: false,
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: AppThemeProfile.values.map((themeProfile) {
+            final AppThemePalette palette = NeuralTheme.paletteFor(
+              themeProfile,
+            );
+            return _ThemeProfileCard(
+              profile: themeProfile,
+              palette: palette,
+              selected: settings.appTheme == themeProfile,
+              onTap: () {
+                onSettingsChanged(settings.copyWith(appTheme: themeProfile));
+              },
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 14),
+        _SettingsToggleCard(
+          icon: Icons.motion_photos_off_rounded,
+          title: 'Reduced Motion',
+          description:
+              'Shortens flashes and transitions for a calmer, snappier board.',
+          value: settings.reducedMotion,
+          accent: NeuralTheme.secondarySoft,
+          onChanged: (enabled) {
+            onSettingsChanged(settings.copyWith(reducedMotion: enabled));
+          },
         ),
         const SizedBox(height: 24),
         const _SettingsSectionTitle(
           label: 'GAMEPLAY',
-          subtitle: 'Tune how much support the run gives you.',
+          subtitle: 'Change timing and helper behavior inside active runs.',
         ),
         const SizedBox(height: 14),
-        _SettingsToggleCard(
-          icon: Icons.bolt_rounded,
-          title: 'Overdrive Focus Assist',
+        _SettingsSliderCard(
+          icon: Icons.speed_rounded,
+          title: 'Sequence Pace',
           description:
-              'Extends the overdrive tap timer so late-round inputs stay readable.',
-          value: settings.focusAssistEnabled,
-          accent: NeuralTheme.secondarySoft,
-          onChanged: (enabled) {
-            onSettingsChanged(settings.copyWith(focusAssistEnabled: enabled));
+              'Controls how fast flashes and round transitions feel across both modes.',
+          value: settings.sequenceSpeed,
+          min: 0.85,
+          max: 1.20,
+          divisions: 7,
+          accent: NeuralTheme.primary,
+          valueLabel:
+              '${settings.paceLabel} ${_percent(settings.sequenceSpeed)}',
+          onChanged: (value) {
+            onSettingsChanged(settings.copyWith(sequenceSpeed: value));
+          },
+        ),
+        const SizedBox(height: 14),
+        _SettingsSliderCard(
+          icon: Icons.timer_outlined,
+          title: 'Overdrive Reaction Window',
+          description:
+              'Widens or tightens the tap timer only for overdrive rounds.',
+          value: settings.overdriveWindowScale,
+          min: 0.85,
+          max: 1.25,
+          divisions: 8,
+          accent: NeuralTheme.secondary,
+          valueLabel:
+              '${settings.overdriveLabel} ${_percent(settings.overdriveWindowScale)}',
+          onChanged: (value) {
+            onSettingsChanged(settings.copyWith(overdriveWindowScale: value));
           },
         ),
         const SizedBox(height: 14),
@@ -734,7 +878,7 @@ class _SettingsDashboard extends StatelessWidget {
           icon: Icons.tips_and_updates_rounded,
           title: 'Training Hints',
           description:
-              'Shows the live guidance card under the board during rounds.',
+              'Keeps the live hint card visible under the board while you play.',
           value: settings.trainingHintsEnabled,
           accent: NeuralTheme.primary,
           onChanged: (enabled) {
@@ -755,31 +899,48 @@ class _SettingsDashboard extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         const _SettingsSectionTitle(
-          label: 'INTERFACE',
-          subtitle: 'Adjust feedback and motion intensity.',
+          label: 'FEEDBACK',
+          subtitle: 'Tune what you hear and feel when the board responds.',
+        ),
+        const SizedBox(height: 14),
+        _SettingsToggleCard(
+          icon: Icons.graphic_eq_rounded,
+          title: 'Sound Effects',
+          description:
+              'Plays the round sequence tones and tap confirmations during the run.',
+          value: settings.soundEnabled,
+          accent: NeuralTheme.primarySoft,
+          onChanged: (enabled) {
+            onSettingsChanged(settings.copyWith(soundEnabled: enabled));
+          },
+        ),
+        const SizedBox(height: 14),
+        _SettingsSliderCard(
+          icon: Icons.volume_up_rounded,
+          title: 'Sound Intensity',
+          description:
+              'Sets the loudness of the game effects without touching your phone volume.',
+          value: settings.soundLevel,
+          min: 0.20,
+          max: 1.00,
+          divisions: 8,
+          accent: NeuralTheme.tertiary,
+          enabled: settings.soundEnabled,
+          valueLabel: '${(settings.soundLevel * 100).round()}%',
+          onChanged: (value) {
+            onSettingsChanged(settings.copyWith(soundLevel: value));
+          },
         ),
         const SizedBox(height: 14),
         _SettingsToggleCard(
           icon: Icons.vibration_rounded,
           title: 'Haptic Feedback',
           description:
-              'Adds tactile pulses for sequence playback, correct taps, and failures.',
+              'Adds tactile pulses for sequence playback, taps, and mistakes.',
           value: settings.hapticsEnabled,
           accent: NeuralTheme.primarySoft,
           onChanged: (enabled) {
             onSettingsChanged(settings.copyWith(hapticsEnabled: enabled));
-          },
-        ),
-        const SizedBox(height: 14),
-        _SettingsToggleCard(
-          icon: Icons.motion_photos_off_rounded,
-          title: 'Reduced Motion',
-          description:
-              'Shortens flashes and transitions to keep the board calmer and snappier.',
-          value: settings.reducedMotion,
-          accent: NeuralTheme.textMuted,
-          onChanged: (enabled) {
-            onSettingsChanged(settings.copyWith(reducedMotion: enabled));
           },
         ),
         const SizedBox(height: 18),
@@ -793,9 +954,9 @@ class _SettingsDashboard extends StatelessWidget {
               color: NeuralTheme.outline.withValues(alpha: 0.18),
             ),
           ),
-          child: const Text(
-            'Settings apply immediately and stay active for the current app session.',
-            style: TextStyle(
+          child: Text(
+            'Everything here applies immediately. Theme changes repaint the app, gameplay settings affect new rounds, and feedback changes are ready for your next tap.',
+            style: const TextStyle(
               color: NeuralTheme.textMuted,
               fontSize: 13,
               height: 1.45,
@@ -820,14 +981,21 @@ class _SettingsHeroCard extends StatelessWidget {
       padding: const EdgeInsets.all(26),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF1D2326), Color(0xFF151617)],
+          colors: [
+            NeuralTheme.primary.withValues(alpha: 0.18),
+            NeuralTheme.surface,
+          ],
         ),
         border: Border.all(color: NeuralTheme.primary.withValues(alpha: 0.15)),
-        boxShadow: const [
-          BoxShadow(color: Color(0x1600E5FF), blurRadius: 28, spreadRadius: 1),
+        boxShadow: [
+          BoxShadow(
+            color: NeuralTheme.primaryGlow.withValues(alpha: 0.35),
+            blurRadius: 28,
+            spreadRadius: 1,
+          ),
         ],
       ),
       child: Column(
@@ -842,7 +1010,7 @@ class _SettingsHeroCard extends StatelessWidget {
                   color: NeuralTheme.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(22),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.tune_rounded,
                   color: NeuralTheme.primary,
                   size: 34,
@@ -853,7 +1021,7 @@ class _SettingsHeroCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'CONTROL DECK',
                       style: TextStyle(
                         color: NeuralTheme.primarySoft,
@@ -864,7 +1032,7 @@ class _SettingsHeroCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Preset ${settings.presetLabel} active. Best streak recorded: $bestStreak.',
+                      'Best streak: $bestStreak. Current theme: ${NeuralTheme.palette.label}. Pace: ${settings.paceLabel}.',
                       style: const TextStyle(
                         color: NeuralTheme.textMuted,
                         fontSize: 14,
@@ -889,16 +1057,18 @@ class _SettingsHeroCard extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: _SettingsStatChip(
-                  label: 'LIVE PROFILE',
-                  value: settings.presetLabel,
+                  label: 'SFX',
+                  value: settings.soundEnabled
+                      ? '${(settings.soundLevel * 100).round()}%'
+                      : 'OFF',
                   accent: NeuralTheme.secondarySoft,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _SettingsStatChip(
-                  label: 'MOTION',
-                  value: settings.reducedMotion ? 'LOW' : 'FULL',
+                  label: 'OVERDRIVE',
+                  value: settings.overdriveLabel,
                   accent: NeuralTheme.tertiary,
                 ),
               ),
@@ -909,6 +1079,8 @@ class _SettingsHeroCard extends StatelessWidget {
     );
   }
 }
+
+String _percent(double value) => '${(value * 100).round()}%';
 
 class _SettingsStatChip extends StatelessWidget {
   const _SettingsStatChip({
@@ -954,6 +1126,117 @@ class _SettingsStatChip extends StatelessWidget {
   }
 }
 
+class _ThemeProfileCard extends StatelessWidget {
+  const _ThemeProfileCard({
+    required this.profile,
+    required this.palette,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AppThemeProfile profile;
+  final AppThemePalette palette;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 156,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(22),
+          onTap: onTap,
+          child: Ink(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: NeuralTheme.surface.withValues(alpha: 0.86),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: selected
+                    ? palette.primary.withValues(alpha: 0.65)
+                    : NeuralTheme.outline.withValues(alpha: 0.24),
+                width: selected ? 1.6 : 1,
+              ),
+              boxShadow: selected
+                  ? [
+                      BoxShadow(
+                        color: palette.primaryGlow.withValues(alpha: 0.35),
+                        blurRadius: 18,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _ThemeDot(color: palette.primary),
+                    const SizedBox(width: 8),
+                    _ThemeDot(color: palette.secondary),
+                    const SizedBox(width: 8),
+                    _ThemeDot(color: palette.tertiary),
+                    const Spacer(),
+                    if (selected)
+                      Icon(
+                        Icons.check_circle_rounded,
+                        size: 18,
+                        color: palette.primary,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  palette.label,
+                  style: TextStyle(
+                    color: selected ? palette.primarySoft : NeuralTheme.text,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  switch (profile) {
+                    AppThemeProfile.neuralBlue => 'Classic cyber glow',
+                    AppThemeProfile.emberGlow => 'Warm neon contrast',
+                    AppThemeProfile.mintCircuit => 'Cool arcade pulse',
+                  },
+                  style: const TextStyle(
+                    color: NeuralTheme.textMuted,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThemeDot extends StatelessWidget {
+  const _ThemeDot({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 14,
+      height: 14,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(99),
+      ),
+    );
+  }
+}
+
 class _SettingsSectionTitle extends StatelessWidget {
   const _SettingsSectionTitle({required this.label, required this.subtitle});
 
@@ -968,8 +1251,8 @@ class _SettingsSectionTitle extends StatelessWidget {
         Text(
           label,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: NeuralTheme.textDim.withValues(alpha: 0.72),
-              ),
+            color: NeuralTheme.textDim.withValues(alpha: 0.72),
+          ),
         ),
         const SizedBox(height: 6),
         Text(
@@ -1056,51 +1339,127 @@ class _SettingsToggleCard extends StatelessWidget {
   }
 }
 
-class _PresetButton extends StatelessWidget {
-  const _PresetButton({
-    required this.label,
-    required this.selected,
+class _SettingsSliderCard extends StatelessWidget {
+  const _SettingsSliderCard({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.divisions,
     required this.accent,
-    required this.onTap,
+    required this.valueLabel,
+    required this.onChanged,
+    this.enabled = true,
   });
 
-  final String label;
-  final bool selected;
+  final IconData icon;
+  final String title;
+  final String description;
+  final double value;
+  final double min;
+  final double max;
+  final int divisions;
   final Color accent;
-  final VoidCallback onTap;
+  final String valueLabel;
+  final ValueChanged<double> onChanged;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-          decoration: BoxDecoration(
-            color: selected
-                ? accent.withValues(alpha: 0.16)
-                : NeuralTheme.surface.withValues(alpha: 0.65),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: selected
-                  ? accent.withValues(alpha: 0.28)
-                  : NeuralTheme.outline.withValues(alpha: 0.16),
-            ),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: selected ? accent : NeuralTheme.textMuted,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.2,
+    final Color cardAccent = enabled
+        ? accent
+        : NeuralTheme.textDim.withValues(alpha: 0.55);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: NeuralTheme.surface.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: cardAccent.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _IconPlate(icon: icon, color: cardAccent),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: enabled
+                            ? NeuralTheme.text
+                            : NeuralTheme.textMuted.withValues(alpha: 0.75),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      description,
+                      style: TextStyle(
+                        color: enabled
+                            ? NeuralTheme.textMuted
+                            : NeuralTheme.textDim,
+                        fontSize: 13,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: cardAccent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  valueLabel,
+                  style: TextStyle(
+                    color: cardAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: cardAccent,
+              inactiveTrackColor: NeuralTheme.surfaceHighest,
+              thumbColor: cardAccent,
+              overlayColor: cardAccent.withValues(alpha: 0.12),
+              valueIndicatorColor: cardAccent,
+              disabledActiveTrackColor: NeuralTheme.textDim.withValues(
+                alpha: 0.22,
+              ),
+              disabledInactiveTrackColor: NeuralTheme.surfaceHighest,
+              disabledThumbColor: NeuralTheme.textDim,
+            ),
+            child: Slider(
+              value: value.clamp(min, max),
+              min: min,
+              max: max,
+              divisions: divisions,
+              label: valueLabel,
+              onChanged: enabled ? onChanged : null,
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -1119,8 +1478,8 @@ class _StatsDashboard extends StatelessWidget {
         Text(
           'PERFORMANCE',
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: NeuralTheme.textDim.withValues(alpha: 0.52),
-              ),
+            color: NeuralTheme.textDim.withValues(alpha: 0.52),
+          ),
         ),
         const SizedBox(height: 10),
         Text(
@@ -1415,7 +1774,13 @@ class _GameScreenState extends State<GameScreen> {
         _sequenceProgress = index / _sequence.length;
       });
       _playSequenceHaptic();
-      unawaited(_soundController.playSequenceStep(streak: _streak));
+      unawaited(
+        _soundController.playSequenceStep(
+          streak: _streak,
+          enabled: widget.settings.soundEnabled,
+          masterVolume: widget.settings.effectiveSoundLevel,
+        ),
+      );
 
       await Future<void>.delayed(_flashDuration);
       if (!_sessionIsActive(session)) {
@@ -1449,15 +1814,7 @@ class _GameScreenState extends State<GameScreen> {
     if (baseTapTimeout == null) {
       return null;
     }
-
-    int adjustedMs = math.max(
-      700,
-      baseTapTimeout.inMilliseconds - math.max(0, _round - 1) * 65,
-    );
-    if (widget.settings.focusAssistEnabled) {
-      adjustedMs = (adjustedMs * 1.25).round();
-    }
-    return Duration(milliseconds: adjustedMs);
+    return widget.settings.tuneOverdriveWindow(baseTapTimeout, round: _round);
   }
 
   void _armInputTimer(int session) {
@@ -1474,8 +1831,9 @@ class _GameScreenState extends State<GameScreen> {
         return;
       }
 
-      final int remainingMs =
-          deadline.difference(DateTime.now()).inMilliseconds;
+      final int remainingMs = deadline
+          .difference(DateTime.now())
+          .inMilliseconds;
       if (remainingMs <= 0) {
         timer.cancel();
         if (!mounted || session != _sessionId) {
@@ -1526,6 +1884,8 @@ class _GameScreenState extends State<GameScreen> {
       _soundController.playTap(
         streak: _streak + (isCorrectTile ? 1 : 0),
         completedRound: completesRound,
+        enabled: widget.settings.soundEnabled,
+        masterVolume: widget.settings.effectiveSoundLevel,
       ),
     );
 
@@ -1641,7 +2001,8 @@ class _GameScreenState extends State<GameScreen> {
       endReason: endReason,
     );
 
-    final bool restart = await showDialog<bool>(
+    final bool restart =
+        await showDialog<bool>(
           context: context,
           barrierDismissible: false,
           builder: (context) => GameOverDialog(
@@ -1672,22 +2033,22 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Duration get _flashDuration => widget.settings.tuneDuration(
-        widget.mode.flashDuration,
-        reducedFactor: 0.68,
-        minMilliseconds: 110,
-      );
+    widget.mode.flashDuration,
+    reducedFactor: 0.68,
+    minMilliseconds: 110,
+  );
 
   Duration get _flashGapDuration => widget.settings.tuneDuration(
-        widget.mode.flashGap,
-        reducedFactor: 0.68,
-        minMilliseconds: 50,
-      );
+    widget.mode.flashGap,
+    reducedFactor: 0.68,
+    minMilliseconds: 50,
+  );
 
   Duration get _roundLeadInDuration => widget.settings.tuneDuration(
-        widget.mode.roundLeadIn,
-        reducedFactor: 0.72,
-        minMilliseconds: 140,
-      );
+    widget.mode.roundLeadIn,
+    reducedFactor: 0.72,
+    minMilliseconds: 140,
+  );
 
   void _playSequenceHaptic() {
     if (!widget.settings.hapticsEnabled) {
@@ -1773,7 +2134,7 @@ class _GameScreenState extends State<GameScreen> {
     final double bottomNavHeight = _navBarBaseHeight + bottomInset;
     return Scaffold(
       body: DecoratedBox(
-        decoration: const BoxDecoration(color: NeuralTheme.background),
+        decoration: BoxDecoration(color: NeuralTheme.background),
         child: Stack(
           children: [
             const _BackgroundEffects(),
@@ -1817,8 +2178,8 @@ class _GameScreenState extends State<GameScreen> {
                               progress: _sequenceProgress,
                               timerProgress:
                                   _inputWindowForCurrentTurn() == null
-                                      ? null
-                                      : _timerProgress,
+                                  ? null
+                                  : _timerProgress,
                             ),
                             const SizedBox(height: 24),
                             Expanded(
@@ -1895,9 +2256,9 @@ class NeuralTopBar extends StatelessWidget {
                   ),
           ),
           const SizedBox(width: 12),
-          const Icon(Icons.memory_rounded, color: NeuralTheme.primary),
+          Icon(Icons.memory_rounded, color: NeuralTheme.primary),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Text(
               'NEURAL RECALL',
               style: TextStyle(
@@ -1915,7 +2276,7 @@ class NeuralTopBar extends StatelessWidget {
                 : _RoundIconButton(
                     icon: actionIcon,
                     color: NeuralTheme.surfaceHighest,
-                    iconColor: const Color(0xFF8AA4AA),
+                    iconColor: NeuralTheme.textDim,
                     onTap: onAction,
                   ),
           ),
@@ -1967,22 +2328,30 @@ class _HeroLogo extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: NeuralTheme.secondary,
                   borderRadius: BorderRadius.circular(99),
-                  boxShadow: const [
-                    BoxShadow(color: Color(0xAA7C4DFF), blurRadius: 12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: NeuralTheme.secondaryGlow.withValues(alpha: 0.65),
+                      blurRadius: 12,
+                    ),
                   ],
                 ),
               ),
             ),
-            const Icon(
+            Icon(
               Icons.psychology_alt_rounded,
               size: 84,
               color: NeuralTheme.primary,
-              shadows: [Shadow(color: Color(0x6600E5FF), blurRadius: 24)],
+              shadows: [
+                Shadow(
+                  color: NeuralTheme.primaryGlow.withValues(alpha: 0.7),
+                  blurRadius: 24,
+                ),
+              ],
             ),
           ],
         ),
         const SizedBox(height: 14),
-        const Text(
+        Text(
           'NEURAL\nRECALL',
           textAlign: TextAlign.center,
           style: TextStyle(
@@ -1992,7 +2361,12 @@ class _HeroLogo extends StatelessWidget {
             fontWeight: FontWeight.w900,
             fontStyle: FontStyle.italic,
             letterSpacing: -2.2,
-            shadows: [Shadow(color: Color(0x6600E5FF), blurRadius: 18)],
+            shadows: [
+              Shadow(
+                color: NeuralTheme.primaryGlow.withValues(alpha: 0.7),
+                blurRadius: 18,
+              ),
+            ],
           ),
         ),
       ],
@@ -2014,8 +2388,12 @@ class _BestStreakCard extends StatelessWidget {
         color: NeuralTheme.surface.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: NeuralTheme.primary.withValues(alpha: 0.12)),
-        boxShadow: const [
-          BoxShadow(color: Color(0x1100E5FF), blurRadius: 24, spreadRadius: 2),
+        boxShadow: [
+          BoxShadow(
+            color: NeuralTheme.primaryGlow.withValues(alpha: 0.28),
+            blurRadius: 24,
+            spreadRadius: 2,
+          ),
         ],
       ),
       child: Column(
@@ -2033,20 +2411,25 @@ class _BestStreakCard extends StatelessWidget {
             children: [
               Text(
                 '$bestStreak',
-                style: const TextStyle(
+                style: TextStyle(
                   color: NeuralTheme.primarySoft,
                   fontSize: 38,
                   fontWeight: FontWeight.w800,
-                  shadows: [Shadow(color: Color(0x5500E5FF), blurRadius: 16)],
+                  shadows: [
+                    Shadow(
+                      color: NeuralTheme.primaryGlow.withValues(alpha: 0.55),
+                      blurRadius: 16,
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 8),
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(bottom: 6),
                 child: Text(
                   'NODES',
                   style: TextStyle(
-                    color: Color(0x66C3F5FF),
+                    color: NeuralTheme.primarySoft.withValues(alpha: 0.7),
                     fontSize: 12,
                     letterSpacing: 1.2,
                   ),
@@ -2079,8 +2462,9 @@ class _ModeButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 22),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
-            color:
-                isOverdrive ? const Color(0x185203D5) : NeuralTheme.surfaceHigh,
+            color: isOverdrive
+                ? NeuralTheme.secondary.withValues(alpha: 0.12)
+                : NeuralTheme.surfaceHigh,
             border: Border.all(
               color: isOverdrive
                   ? NeuralTheme.secondary.withValues(alpha: 0.20)
@@ -2175,7 +2559,7 @@ class _FocusDashboard extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.local_fire_department_rounded,
                     color: NeuralTheme.tertiary,
                     size: 20,
@@ -2183,7 +2567,7 @@ class _FocusDashboard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(
                     'R$round  |  $streak CHAIN',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: NeuralTheme.tertiary,
                       fontWeight: FontWeight.w800,
                     ),
@@ -2207,9 +2591,7 @@ class _FocusDashboard extends StatelessWidget {
             value: progress,
             minHeight: 7,
             backgroundColor: NeuralTheme.surfaceHighest,
-            valueColor: const AlwaysStoppedAnimation<Color>(
-              NeuralTheme.primary,
-            ),
+            valueColor: AlwaysStoppedAnimation<Color>(NeuralTheme.primary),
           ),
         ),
         const SizedBox(height: 10),
@@ -2218,8 +2600,8 @@ class _FocusDashboard extends StatelessWidget {
           child: Text(
             phaseLabel,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: NeuralTheme.primarySoft.withValues(alpha: 0.75),
-                ),
+              color: NeuralTheme.primarySoft.withValues(alpha: 0.75),
+            ),
           ),
         ),
       ],
@@ -2277,7 +2659,7 @@ class _OverdriveDashboard extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.bolt_rounded,
                         color: NeuralTheme.secondarySoft,
                         size: 18,
@@ -2285,7 +2667,7 @@ class _OverdriveDashboard extends StatelessWidget {
                       const SizedBox(width: 6),
                       Text(
                         'R$round  |  X$streak',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: NeuralTheme.secondarySoft,
                           fontSize: 12,
                           fontWeight: FontWeight.w800,
@@ -2319,7 +2701,7 @@ class _OverdriveDashboard extends StatelessWidget {
             value: progress,
             minHeight: 6,
             backgroundColor: NeuralTheme.surfaceHighest,
-            valueColor: const AlwaysStoppedAnimation<Color>(
+            valueColor: AlwaysStoppedAnimation<Color>(
               NeuralTheme.secondarySoft,
             ),
           ),
@@ -2331,8 +2713,8 @@ class _OverdriveDashboard extends StatelessWidget {
               child: Text(
                 phaseLabel,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: NeuralTheme.secondarySoft.withValues(alpha: 0.80),
-                    ),
+                  color: NeuralTheme.secondarySoft.withValues(alpha: 0.80),
+                ),
               ),
             ),
             SizedBox(
@@ -2343,7 +2725,7 @@ class _OverdriveDashboard extends StatelessWidget {
                   value: timerProgress,
                   minHeight: 6,
                   backgroundColor: NeuralTheme.surfaceHighest,
-                  valueColor: const AlwaysStoppedAnimation<Color>(
+                  valueColor: AlwaysStoppedAnimation<Color>(
                     NeuralTheme.tertiary,
                   ),
                 ),
@@ -2431,11 +2813,8 @@ class _ModeProgress extends StatelessWidget {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: mode == GameMode.focus
-                              ? const [NeuralTheme.primary, Color(0xFF00DAF3)]
-                              : const [
-                                  NeuralTheme.primary,
-                                  NeuralTheme.secondary,
-                                ],
+                              ? [NeuralTheme.primary, NeuralTheme.primarySoft]
+                              : [NeuralTheme.primary, NeuralTheme.secondary],
                         ),
                       ),
                     ),
@@ -2486,7 +2865,7 @@ class _ModeProgress extends StatelessWidget {
                     value: timerProgress,
                     minHeight: 4,
                     backgroundColor: NeuralTheme.surfaceHighest,
-                    valueColor: const AlwaysStoppedAnimation<Color>(
+                    valueColor: AlwaysStoppedAnimation<Color>(
                       NeuralTheme.tertiary,
                     ),
                   ),
@@ -2496,8 +2875,8 @@ class _ModeProgress extends StatelessWidget {
               Text(
                 'UNTIMED',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: NeuralTheme.primarySoft.withValues(alpha: 0.65),
-                    ),
+                  color: NeuralTheme.primarySoft.withValues(alpha: 0.65),
+                ),
               ),
           ],
         ),
@@ -2599,15 +2978,15 @@ class _BoardTile extends StatelessWidget {
           color: error
               ? NeuralTheme.errorContainer.withValues(alpha: 0.90)
               : active
-                  ? accent
-                  : NeuralTheme.surfaceHigh,
+              ? accent
+              : NeuralTheme.surfaceHigh,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
             color: error
                 ? NeuralTheme.error.withValues(alpha: 0.40)
                 : active
-                    ? NeuralTheme.primarySoft.withValues(alpha: 0.30)
-                    : NeuralTheme.outline.withValues(alpha: 0.12),
+                ? NeuralTheme.primarySoft.withValues(alpha: 0.30)
+                : NeuralTheme.outline.withValues(alpha: 0.12),
             width: active || error ? 2 : 1,
           ),
           boxShadow: active || error
@@ -2628,14 +3007,14 @@ class _BoardTile extends StatelessWidget {
             opacity: active || error
                 ? 1
                 : enabled
-                    ? 0.24
-                    : 0.12,
+                ? 0.24
+                : 0.12,
             child: Icon(
               error
                   ? Icons.close_rounded
                   : active
-                      ? icon
-                      : Icons.grid_4x4_rounded,
+                  ? icon
+                  : Icons.grid_4x4_rounded,
               size: active || error ? 38 : 24,
               color: active || error ? Colors.white : NeuralTheme.textDim,
             ),
@@ -2810,7 +3189,7 @@ class _ResetConfirmDialog extends StatelessWidget {
                     onPressed: () => Navigator.of(context).pop(true),
                     style: FilledButton.styleFrom(
                       backgroundColor: NeuralTheme.primary,
-                      foregroundColor: const Color(0xFF00363D),
+                      foregroundColor: NeuralTheme.onAccent,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
@@ -2863,9 +3242,9 @@ class GameOverDialog extends StatelessWidget {
           border: Border.all(
             color: NeuralTheme.outline.withValues(alpha: 0.22),
           ),
-          boxShadow: const [
+          boxShadow: [
             BoxShadow(
-              color: Color(0x2200E5FF),
+              color: NeuralTheme.primaryGlow.withValues(alpha: 0.25),
               blurRadius: 28,
               spreadRadius: 2,
             ),
@@ -2958,8 +3337,8 @@ class GameOverDialog extends StatelessWidget {
                 Text(
                   'FINAL SCORE',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: NeuralTheme.textMuted,
-                      ),
+                    color: NeuralTheme.textMuted,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -2989,7 +3368,7 @@ class GameOverDialog extends StatelessWidget {
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: const [
+                      children: [
                         Icon(
                           Icons.stars_rounded,
                           color: NeuralTheme.secondarySoft,
@@ -3033,7 +3412,7 @@ class GameOverDialog extends StatelessWidget {
                     onPressed: () => Navigator.of(context).pop(true),
                     style: FilledButton.styleFrom(
                       backgroundColor: NeuralTheme.primary,
-                      foregroundColor: const Color(0xFF00363D),
+                      foregroundColor: NeuralTheme.onAccent,
                       padding: const EdgeInsets.symmetric(vertical: 18),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(18),
@@ -3151,7 +3530,12 @@ class _NavIcon extends StatelessWidget {
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(18),
             boxShadow: selected
-                ? const [BoxShadow(color: Color(0x3300E5FF), blurRadius: 18)]
+                ? [
+                    BoxShadow(
+                      color: NeuralTheme.primaryGlow.withValues(alpha: 0.45),
+                      blurRadius: 18,
+                    ),
+                  ]
                 : null,
           ),
           child: Icon(
@@ -3219,18 +3603,24 @@ class _BackgroundEffects extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const IgnorePointer(
+    return IgnorePointer(
       child: Stack(
         children: [
           Positioned(
             top: -120,
             right: -80,
-            child: _GlowOrb(size: 280, color: Color(0x1100E5FF)),
+            child: _GlowOrb(
+              size: 280,
+              color: NeuralTheme.primaryGlow.withValues(alpha: 0.35),
+            ),
           ),
           Positioned(
             bottom: -80,
             left: -100,
-            child: _GlowOrb(size: 240, color: Color(0x147C4DFF)),
+            child: _GlowOrb(
+              size: 240,
+              color: NeuralTheme.secondaryGlow.withValues(alpha: 0.42),
+            ),
           ),
           Positioned.fill(child: _GridOverlay()),
         ],

@@ -70,18 +70,33 @@ class NeuralSoundController {
     }
   }
 
-  Future<void> playSequenceStep({required int streak}) async {
+  Future<void> playSequenceStep({
+    required int streak,
+    required bool enabled,
+    required double masterVolume,
+  }) async {
+    if (!enabled || masterVolume <= 0) {
+      return;
+    }
+
     await _playFamily(
       _sequencePools,
       volumeCurve: _sequenceVolumes,
       tier: _tierForStreak(streak),
+      masterVolume: masterVolume,
     );
   }
 
   Future<void> playTap({
     required int streak,
     required bool completedRound,
+    required bool enabled,
+    required double masterVolume,
   }) async {
+    if (!enabled || masterVolume <= 0) {
+      return;
+    }
+
     final int tier = _tierForStreak(streak);
     final double volume =
         (completedRound ? _tapVolumes[tier] + 0.06 : _tapVolumes[tier]).clamp(
@@ -89,7 +104,12 @@ class NeuralSoundController {
           1.0,
         );
 
-    await _playFamily(_tapPools, tier: tier, volumeOverride: volume);
+    await _playFamily(
+      _tapPools,
+      tier: tier,
+      volumeOverride: volume,
+      masterVolume: masterVolume,
+    );
   }
 
   Future<void> _playFamily(
@@ -97,6 +117,7 @@ class NeuralSoundController {
     required int tier,
     List<double>? volumeCurve,
     double? volumeOverride,
+    required double masterVolume,
   }) async {
     if (!_audioAvailable) {
       return;
@@ -109,7 +130,7 @@ class NeuralSoundController {
 
     try {
       await pools[tier].start(
-        volume: volumeOverride ?? volumeCurve?[tier] ?? 1.0,
+        volume: (volumeOverride ?? volumeCurve?[tier] ?? 1.0) * masterVolume,
       );
     } catch (error, stackTrace) {
       _audioAvailable = false;
