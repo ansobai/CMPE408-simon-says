@@ -341,7 +341,7 @@ class _FullscreenUiObserver with WidgetsBindingObserver {
 enum GameMode {
   focus(
     label: 'Focus Mode',
-    menuTitle: 'Calm Memory Run',
+    menuTitle: 'Easy mode',
     subtitle: '4 Tiles | Relaxed Speed',
     scoreLabel: 'FOCUS MODE',
     gridSize: 2,
@@ -354,7 +354,7 @@ enum GameMode {
   ),
   overdrive(
     label: 'Overdrive Mode',
-    menuTitle: 'Rapid Reflex Run',
+    menuTitle: 'Hard Mode',
     subtitle: '9 Tiles | Rapid Sequence',
     scoreLabel: 'OVERDRIVE',
     gridSize: 3,
@@ -417,67 +417,54 @@ class MainMenuScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
     final double bottomNavHeight = 74 + math.max(12, bottomInset);
-    return ValueListenableBuilder<NeuralSettings>(
-      valueListenable: settings,
-      builder: (context, currentSettings, _) {
-        NeuralTheme.activate(currentSettings.appTheme);
-        return Scaffold(
-          body: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [NeuralTheme.background, NeuralTheme.backgroundBottom],
-              ),
-            ),
-            child: Stack(
-              children: [
-                const _BackgroundEffects(),
-                SafeArea(
-                  bottom: false,
-                  child: Column(
-                    children: [
-                      NeuralTopBar(onAction: () => _openSettings(context)),
-                      Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.fromLTRB(
-                            24,
-                            8,
-                            24,
-                            bottomNavHeight,
-                          ),
-                          child: _ScaleToFit(
-                            designWidth: _mainMenuDesignWidth,
-                            designHeight: _mainMenuDesignHeight,
-                            child: Column(
-                              children: [
-                                Text(
-                                  'V2.0.4',
-                                  style: Theme.of(context).textTheme.labelSmall
-                                      ?.copyWith(
-                                        color: NeuralTheme.textDim.withValues(
-                                          alpha: 0.5,
-                                        ),
-                                      ),
-                                ),
-                                const SizedBox(height: 16),
-                                const _HeroLogo(),
-                                const SizedBox(height: 28),
-                                _ModeButton(
-                                  mode: GameMode.focus,
-                                  onTap: () =>
-                                      _openGame(context, GameMode.focus),
-                                ),
-                                const SizedBox(height: 16),
-                                _ModeButton(
-                                  mode: GameMode.overdrive,
-                                  onTap: () =>
-                                      _openGame(context, GameMode.overdrive),
-                                ),
-                                const Spacer(),
-                              ],
+    return Scaffold(
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF131313), Color(0xFF0E0E0E)],
+          ),
+        ),
+        child: Stack(
+          children: [
+            const _BackgroundEffects(),
+            SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  NeuralTopBar(onAction: () => _openSettings(context)),
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(24, 8, 24, bottomNavHeight),
+                      child: _ScaleToFit(
+                        designWidth: _mainMenuDesignWidth,
+                        designHeight: _mainMenuDesignHeight,
+                        child: Column(
+                          children: [
+                            const _HeroLogo(),
+                            const SizedBox(height: 28),
+                            _ModeButton(
+                              mode: GameMode.focus,
+                              onTap: () => _openGame(context, GameMode.focus),
                             ),
-                          ),
+                            const SizedBox(height: 16),
+                            _ModeButton(
+                              mode: GameMode.overdrive,
+                              onTap: () =>
+                                  _openGame(context, GameMode.overdrive),
+                            ),
+                            const Spacer(),
+                            Text(
+                              'V1.0.0',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: NeuralTheme.textDim.withValues(
+                                      alpha: 0.5,
+                                    ),
+                                  ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -3290,7 +3277,7 @@ class GameOverDialog extends StatelessWidget {
                       ),
                     ),
                     child: const Text(
-                      'REBOOT',
+                      'PLAY AGAIN',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
@@ -3322,17 +3309,6 @@ class GameOverDialog extends StatelessWidget {
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    _TinyPulse(active: true),
-                    SizedBox(width: 6),
-                    _TinyPulse(active: false),
-                    SizedBox(width: 6),
-                    _TinyPulse(active: false),
-                  ],
                 ),
               ],
             ),
@@ -3560,26 +3536,6 @@ class _DotGridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _TinyPulse extends StatelessWidget {
-  const _TinyPulse({required this.active});
-
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 6,
-      height: 6,
-      decoration: BoxDecoration(
-        color: active
-            ? NeuralTheme.secondary
-            : NeuralTheme.secondarySoft.withValues(alpha: 0.30),
-        shape: BoxShape.circle,
-      ),
-    );
-  }
 }
 
 String _formatNumber(int value) {
