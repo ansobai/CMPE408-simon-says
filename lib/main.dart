@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'neural_sound_controller.dart';
+import 'stats/local_stats_repository.dart';
+import 'stats/stats_models.dart';
+import 'stats/stats_repository.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,28 +16,57 @@ Future<void> main() async {
 }
 
 class NeuralRecallApp extends StatefulWidget {
-  const NeuralRecallApp({super.key});
+  const NeuralRecallApp({super.key, this.statsRepository});
+
+  final StatsRepository? statsRepository;
 
   @override
   State<NeuralRecallApp> createState() => _NeuralRecallAppState();
 }
 
 class _NeuralRecallAppState extends State<NeuralRecallApp> {
-  final ValueNotifier<int> _bestStreak = ValueNotifier<int>(24);
+  final ValueNotifier<int> _bestStreak = ValueNotifier<int>(0);
   final ValueNotifier<NeuralSettings> _settings = ValueNotifier<NeuralSettings>(
     const NeuralSettings(),
   );
+  late final StatsRepository _statsRepository;
+  bool _isLoadingStats = true;
 
   @override
   void initState() {
     super.initState();
+    _statsRepository = widget.statsRepository ?? LocalStatsRepository();
     WidgetsBinding.instance.addObserver(_fullscreenObserver);
+    unawaited(_loadPersistedStats());
   }
 
-  void _updateBestStreak(int streak) {
-    if (streak > _bestStreak.value) {
-      _bestStreak.value = streak;
+  Future<void> _loadPersistedStats() async {
+    PlayerStats stats = PlayerStats.empty();
+
+    try {
+      stats = await _statsRepository.loadStats();
+    } catch (_) {
+      stats = PlayerStats.empty();
+    } finally {
+      if (!mounted) {
+        return;
+      }
+
+      _bestStreak.value = stats.bestStreak;
+      setState(() {
+        _isLoadingStats = false;
+      });
     }
+  }
+
+  Future<void> _saveCompletedSession(GameSession session) async {
+    await _statsRepository.saveCompletedSession(session);
+    final PlayerStats stats = await _statsRepository.loadStats();
+    if (!mounted) {
+      return;
+    }
+
+    _bestStreak.value = stats.bestStreak;
   }
 
   @override
@@ -79,10 +111,36 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
           ),
         ),
       ),
-      home: MainMenuScreen(
-        bestStreak: _bestStreak,
-        settings: _settings,
-        onNewBest: _updateBestStreak,
+      home: _isLoadingStats
+          ? const _StartupLoadingScreen()
+          : MainMenuScreen(
+              bestStreak: _bestStreak,
+              settings: _settings,
+              onSessionCompleted: _saveCompletedSession,
+            ),
+    );
+  }
+}
+
+class _StartupLoadingScreen extends StatelessWidget {
+  const _StartupLoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: NeuralTheme.background,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: NeuralTheme.primary),
+            SizedBox(height: 20),
+            Text(
+              'Loading neural profile...',
+              style: TextStyle(color: NeuralTheme.textMuted),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -261,17 +319,28 @@ enum GameMode {
 
 enum GamePhase { booting, showing, input, roundClear, failed }
 
+extension on GameMode {
+  GameModeKey get statsKey {
+    switch (this) {
+      case GameMode.focus:
+        return GameModeKey.focus;
+      case GameMode.overdrive:
+        return GameModeKey.overdrive;
+    }
+  }
+}
+
 class MainMenuScreen extends StatelessWidget {
   const MainMenuScreen({
     super.key,
     required this.bestStreak,
     required this.settings,
-    required this.onNewBest,
+    required this.onSessionCompleted,
   });
 
   final ValueNotifier<int> bestStreak;
   final ValueNotifier<NeuralSettings> settings;
-  final ValueChanged<int> onNewBest;
+  final Future<void> Function(GameSession session) onSessionCompleted;
 
   @override
   Widget build(BuildContext context) {
@@ -352,7 +421,7 @@ class MainMenuScreen extends StatelessWidget {
           mode: mode,
           initialBestStreak: bestStreak.value,
           settings: settings.value,
-          onNewBest: onNewBest,
+          onSessionCompleted: onSessionCompleted,
         ),
       ),
     );
@@ -1166,13 +1235,13 @@ class GameScreen extends StatefulWidget {
     required this.mode,
     required this.initialBestStreak,
     required this.settings,
-    required this.onNewBest,
+    required this.onSessionCompleted,
   });
 
   final GameMode mode;
   final int initialBestStreak;
   final NeuralSettings settings;
-  final ValueChanged<int> onNewBest;
+  final Future<void> Function(GameSession session) onSessionCompleted;
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -1197,6 +1266,8 @@ class _GameScreenState extends State<GameScreen> {
   double _timerProgress = 1;
   GamePhase _phase = GamePhase.booting;
   bool _isSubmitting = false;
+  bool _didRecordCurrentSession = false;
+  DateTime? _sessionStartedAt;
 
   @override
   void initState() {
@@ -1223,6 +1294,7 @@ class _GameScreenState extends State<GameScreen> {
 
   Future<void> _startNewGame() async {
     final int session = ++_sessionId;
+    final DateTime startedAt = DateTime.now();
     _cancelInputTimer();
     if (mounted) {
       setState(() {
@@ -1240,6 +1312,8 @@ class _GameScreenState extends State<GameScreen> {
         _phase = GamePhase.booting;
       });
     }
+    _didRecordCurrentSession = false;
+    _sessionStartedAt = startedAt;
 
     await Future<void>.delayed(
       widget.settings.tuneDuration(
@@ -1371,7 +1445,12 @@ class _GameScreenState extends State<GameScreen> {
         setState(() {
           _timerProgress = 0;
         });
-        unawaited(_handleFailure(reason: 'Time expired'));
+        unawaited(
+          _handleFailure(
+            summary: 'Time expired',
+            endReason: SessionEndReason.timedOut,
+          ),
+        );
         return;
       }
 
@@ -1435,7 +1514,11 @@ class _GameScreenState extends State<GameScreen> {
         ),
       );
       if (_sessionIsActive(session)) {
-        await _handleFailure(reason: 'Wrong tile', errorTile: index);
+        await _handleFailure(
+          summary: 'Wrong tile',
+          endReason: SessionEndReason.wrongTile,
+          errorTile: index,
+        );
       }
       return;
     }
@@ -1485,11 +1568,17 @@ class _GameScreenState extends State<GameScreen> {
     _armInputTimer(session);
   }
 
-  Future<void> _handleFailure({required String reason, int? errorTile}) async {
-    if (_isSubmitting) {
+  Future<void> _handleFailure({
+    required String summary,
+    required SessionEndReason endReason,
+    int? errorTile,
+  }) async {
+    if (_isSubmitting || _didRecordCurrentSession) {
       return;
     }
 
+    _isSubmitting = true;
+    _didRecordCurrentSession = true;
     _cancelInputTimer();
     setState(() {
       _phase = GamePhase.failed;
@@ -1500,26 +1589,43 @@ class _GameScreenState extends State<GameScreen> {
       _timerProgress = 0;
     });
 
-    _isSubmitting = true;
-    final bool? restart = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => GameOverDialog(
-        mode: widget.mode,
-        score: _score,
-        bestRun: _bestRun,
-        roundReached: _round,
-        summary: reason,
-        newHighScore: _bestRun > widget.initialBestStreak,
-      ),
+    final DateTime endedAt = DateTime.now();
+    final GameSession completedSession = GameSession(
+      id: '${widget.mode.statsKey.name}-${endedAt.microsecondsSinceEpoch}',
+      mode: widget.mode.statsKey,
+      startedAt: _sessionStartedAt ?? endedAt,
+      endedAt: endedAt,
+      score: _score,
+      bestStreak: _bestRun,
+      roundReached: _round,
+      endReason: endReason,
     );
-    widget.onNewBest(_bestRun);
-    _isSubmitting = false;
+
+    final bool restart =
+        await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => GameOverDialog(
+            mode: widget.mode,
+            score: _score,
+            bestRun: _bestRun,
+            roundReached: _round,
+            summary: summary,
+            newHighScore: _bestRun > widget.initialBestStreak,
+          ),
+        ) ??
+        false;
+
+    try {
+      await widget.onSessionCompleted(completedSession);
+    } finally {
+      _isSubmitting = false;
+    }
 
     if (!mounted) {
       return;
     }
-    if (restart ?? false) {
+    if (restart) {
       unawaited(_startNewGame());
     } else {
       Navigator.of(context).pop();
