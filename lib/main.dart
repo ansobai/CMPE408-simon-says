@@ -467,21 +467,21 @@ class MainMenuScreen extends StatelessWidget {
                           ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: NeuralBottomNav(
-                    selected: NeuralNavItem.grid,
-                    onItemSelected: (item) => _handleNavigation(context, item),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        );
-      },
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: NeuralBottomNav(
+                selected: NeuralNavItem.grid,
+                onItemSelected: (item) => _handleNavigation(context, item),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
