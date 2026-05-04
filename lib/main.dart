@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'neural_sound_controller.dart';
+import 'settings/local_settings_repository.dart';
+import 'settings/neural_settings.dart';
+import 'settings/settings_repository.dart';
 import 'stats/local_stats_repository.dart';
 import 'stats/stats_models.dart';
 import 'stats/stats_repository.dart';
@@ -16,9 +19,14 @@ Future<void> main() async {
 }
 
 class NeuralRecallApp extends StatefulWidget {
-  const NeuralRecallApp({super.key, this.statsRepository});
+  const NeuralRecallApp({
+    super.key,
+    this.statsRepository,
+    this.settingsRepository,
+  });
 
   final StatsRepository? statsRepository;
+  final SettingsRepository? settingsRepository;
 
   @override
   State<NeuralRecallApp> createState() => _NeuralRecallAppState();
@@ -32,33 +40,43 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     const NeuralSettings(),
   );
   late final StatsRepository _statsRepository;
-  bool _isLoadingStats = true;
+  late final SettingsRepository _settingsRepository;
+  bool _isLoadingAppState = true;
 
   @override
   void initState() {
     super.initState();
     _statsRepository = widget.statsRepository ?? LocalStatsRepository();
+    _settingsRepository = widget.settingsRepository ?? LocalSettingsRepository();
     WidgetsBinding.instance.addObserver(_fullscreenObserver);
-    unawaited(_loadPersistedStats());
+    unawaited(_loadPersistedAppState());
   }
 
-  Future<void> _loadPersistedStats() async {
+  Future<void> _loadPersistedAppState() async {
     PlayerStats stats = PlayerStats.empty();
+    NeuralSettings settings = const NeuralSettings();
 
     try {
       stats = await _statsRepository.loadStats();
     } catch (_) {
       stats = PlayerStats.empty();
-    } finally {
-      if (!mounted) {
-        return;
-      }
-
-      _playerStats.value = stats;
-      setState(() {
-        _isLoadingStats = false;
-      });
     }
+
+    try {
+      settings = await _settingsRepository.loadSettings();
+    } catch (_) {
+      settings = const NeuralSettings();
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    _playerStats.value = stats;
+    _settings.value = settings;
+    setState(() {
+      _isLoadingAppState = false;
+    });
   }
 
   Future<void> _saveCompletedSession(GameSession session) async {
@@ -69,6 +87,11 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     }
 
     _playerStats.value = stats;
+  }
+
+  void _updateSettings(NeuralSettings nextSettings) {
+    _settings.value = nextSettings;
+    unawaited(_settingsRepository.saveSettings(nextSettings));
   }
 
   @override
@@ -113,12 +136,13 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
           ),
         ),
       ),
-      home: _isLoadingStats
+      home: _isLoadingAppState
           ? const _StartupLoadingScreen()
           : MainMenuScreen(
               playerStats: _playerStats,
               settings: _settings,
               onSessionCompleted: _saveCompletedSession,
+              onSettingsChanged: _updateSettings,
             ),
     );
   }
@@ -164,68 +188,6 @@ class NeuralTheme {
   static const Color tertiary = Color(0xFFFEC931);
   static const Color error = Color(0xFFFFB4AB);
   static const Color errorContainer = Color(0xFF93000A);
-}
-
-@immutable
-class NeuralSettings {
-  const NeuralSettings({
-    this.hapticsEnabled = true,
-    this.reducedMotion = false,
-    this.trainingHintsEnabled = true,
-    this.focusAssistEnabled = false,
-    this.confirmResetEnabled = true,
-  });
-
-  final bool hapticsEnabled;
-  final bool reducedMotion;
-  final bool trainingHintsEnabled;
-  final bool focusAssistEnabled;
-  final bool confirmResetEnabled;
-
-  NeuralSettings copyWith({
-    bool? hapticsEnabled,
-    bool? reducedMotion,
-    bool? trainingHintsEnabled,
-    bool? focusAssistEnabled,
-    bool? confirmResetEnabled,
-  }) {
-    return NeuralSettings(
-      hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
-      reducedMotion: reducedMotion ?? this.reducedMotion,
-      trainingHintsEnabled: trainingHintsEnabled ?? this.trainingHintsEnabled,
-      focusAssistEnabled: focusAssistEnabled ?? this.focusAssistEnabled,
-      confirmResetEnabled: confirmResetEnabled ?? this.confirmResetEnabled,
-    );
-  }
-
-  Duration tuneDuration(
-    Duration duration, {
-    double reducedFactor = 0.72,
-    int minMilliseconds = 60,
-  }) {
-    if (!reducedMotion) {
-      return duration;
-    }
-
-    final int scaledMs = math.max(
-      minMilliseconds,
-      (duration.inMilliseconds * reducedFactor).round(),
-    );
-    return Duration(milliseconds: scaledMs);
-  }
-
-  String get presetLabel {
-    if (focusAssistEnabled && trainingHintsEnabled && reducedMotion) {
-      return 'CALM';
-    }
-    if (!focusAssistEnabled &&
-        !trainingHintsEnabled &&
-        !confirmResetEnabled &&
-        !hapticsEnabled) {
-      return 'HARDCORE';
-    }
-    return 'STANDARD';
-  }
 }
 
 const double _navBarBaseHeight = 88;
@@ -338,11 +300,13 @@ class MainMenuScreen extends StatelessWidget {
     required this.playerStats,
     required this.settings,
     required this.onSessionCompleted,
+    required this.onSettingsChanged,
   });
 
   final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
   final Future<void> Function(GameSession session) onSessionCompleted;
+  final ValueChanged<NeuralSettings> onSettingsChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -364,7 +328,7 @@ class MainMenuScreen extends StatelessWidget {
               bottom: false,
               child: Column(
                 children: [
-                  NeuralTopBar(onAction: () => _openSettings(context)),
+                  const NeuralTopBar(),
                   Expanded(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(24, 8, 24, bottomNavHeight),
@@ -432,8 +396,11 @@ class MainMenuScreen extends StatelessWidget {
   Future<void> _openSettings(BuildContext context) {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            SettingsScreen(playerStats: playerStats, settings: settings),
+        builder: (_) => SettingsScreen(
+          playerStats: playerStats,
+          settings: settings,
+          onSettingsChanged: onSettingsChanged,
+        ),
       ),
     );
   }
@@ -441,7 +408,11 @@ class MainMenuScreen extends StatelessWidget {
   Future<void> _openStats(BuildContext context) {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => StatsScreen(playerStats: playerStats, settings: settings),
+        builder: (_) => StatsScreen(
+          playerStats: playerStats,
+          settings: settings,
+          onSettingsChanged: onSettingsChanged,
+        ),
       ),
     );
   }
@@ -463,10 +434,12 @@ class StatsScreen extends StatelessWidget {
     super.key,
     required this.playerStats,
     required this.settings,
+    required this.onSettingsChanged,
   });
 
   final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
+  final ValueChanged<NeuralSettings> onSettingsChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -523,6 +496,7 @@ class StatsScreen extends StatelessWidget {
                         builder: (_) => SettingsScreen(
                           playerStats: playerStats,
                           settings: settings,
+                          onSettingsChanged: onSettingsChanged,
                         ),
                       ),
                     );
@@ -542,10 +516,12 @@ class SettingsScreen extends StatelessWidget {
     super.key,
     required this.playerStats,
     required this.settings,
+    required this.onSettingsChanged,
   });
 
   final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
+  final ValueChanged<NeuralSettings> onSettingsChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -584,9 +560,7 @@ class SettingsScreen extends StatelessWidget {
                                   child: _SettingsDashboard(
                                     bestStreak: currentStats.bestStreak,
                                     settings: currentSettings,
-                                    onSettingsChanged: (nextSettings) {
-                                      settings.value = nextSettings;
-                                    },
+                                    onSettingsChanged: onSettingsChanged,
                                   ),
                                 ),
                               ),
@@ -613,6 +587,7 @@ class SettingsScreen extends StatelessWidget {
                         builder: (_) => StatsScreen(
                           playerStats: playerStats,
                           settings: settings,
+                          onSettingsChanged: onSettingsChanged,
                         ),
                       ),
                     );
@@ -791,7 +766,7 @@ class _SettingsDashboard extends StatelessWidget {
             ),
           ),
           child: const Text(
-            'Settings apply immediately and stay active for the current app session.',
+            'Settings apply immediately and are saved for the next time you open the app.',
             style: TextStyle(
               color: NeuralTheme.textMuted,
               fontSize: 13,
