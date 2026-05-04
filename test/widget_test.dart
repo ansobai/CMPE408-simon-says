@@ -128,9 +128,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Preset CALM active. Best streak recorded: 8.'),
+      find.text(
+        'Preset CALM active. Theme NEON loaded. Best streak recorded: 8.',
+      ),
       findsOneWidget,
     );
+    expect(find.text('VISUAL THEME'), findsOneWidget);
+    expect(find.text('SUNSET'), findsOneWidget);
   });
 }
 

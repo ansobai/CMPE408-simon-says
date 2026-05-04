@@ -21,6 +21,7 @@ void main() {
       expect(settings.trainingHintsEnabled, isTrue);
       expect(settings.focusAssistEnabled, isFalse);
       expect(settings.confirmResetEnabled, isTrue);
+      expect(settings.appTheme, AppThemeStyle.neon);
     });
 
     test('persists settings for the next app launch', () async {
@@ -31,6 +32,7 @@ void main() {
         trainingHintsEnabled: false,
         focusAssistEnabled: true,
         confirmResetEnabled: false,
+        appTheme: AppThemeStyle.sunset,
       );
 
       await writer.saveSettings(savedSettings);
@@ -43,6 +45,7 @@ void main() {
       expect(restoredSettings.trainingHintsEnabled, isFalse);
       expect(restoredSettings.focusAssistEnabled, isTrue);
       expect(restoredSettings.confirmResetEnabled, isFalse);
+      expect(restoredSettings.appTheme, AppThemeStyle.sunset);
     });
   });
 }

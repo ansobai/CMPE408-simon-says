@@ -47,7 +47,8 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   void initState() {
     super.initState();
     _statsRepository = widget.statsRepository ?? LocalStatsRepository();
-    _settingsRepository = widget.settingsRepository ?? LocalSettingsRepository();
+    _settingsRepository =
+        widget.settingsRepository ?? LocalSettingsRepository();
     WidgetsBinding.instance.addObserver(_fullscreenObserver);
     unawaited(_loadPersistedAppState());
   }
@@ -90,7 +91,9 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   }
 
   void _updateSettings(NeuralSettings nextSettings) {
-    _settings.value = nextSettings;
+    setState(() {
+      _settings.value = nextSettings;
+    });
     unawaited(_settingsRepository.saveSettings(nextSettings));
   }
 
@@ -104,15 +107,18 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
 
   @override
   Widget build(BuildContext context) {
+    final NeuralVisualTheme visualTheme = NeuralTheme.visualThemeFor(
+      _settings.value.appTheme,
+    );
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: NeuralTheme.background,
+        scaffoldBackgroundColor: visualTheme.backgroundBase,
         useMaterial3: true,
-        colorScheme: const ColorScheme.dark(
-          primary: NeuralTheme.primary,
-          secondary: NeuralTheme.secondary,
+        colorScheme: ColorScheme.dark(
+          primary: visualTheme.primaryAccent,
+          secondary: visualTheme.secondaryAccent,
           surface: NeuralTheme.surface,
         ),
         textTheme: const TextTheme(
@@ -188,6 +194,115 @@ class NeuralTheme {
   static const Color tertiary = Color(0xFFFEC931);
   static const Color error = Color(0xFFFFB4AB);
   static const Color errorContainer = Color(0xFF93000A);
+
+  static NeuralVisualTheme visualThemeFor(AppThemeStyle style) {
+    switch (style) {
+      case AppThemeStyle.neon:
+        return const NeuralVisualTheme(
+          label: 'NEON',
+          backgroundBase: Color(0xFF0A0810),
+          backgroundGradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF161022), Color(0xFF07070C)],
+          ),
+          surfaceGradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF20122E), Color(0xFF0B0E18)],
+          ),
+          panelColor: Color(0xB3161024),
+          panelBorder: Color(0x329F67FF),
+          titleColor: Color(0xFF77F6FF),
+          bodyColor: Color(0xFFD6CBFF),
+          mutedColor: Color(0xFF907FAF),
+          primaryAccent: NeuralTheme.primary,
+          secondaryAccent: Color(0xFFE186FF),
+          topOrbColor: Color(0x1A00E5FF),
+          bottomOrbColor: Color(0x1D8E3DFF),
+        );
+      case AppThemeStyle.sunset:
+        return const NeuralVisualTheme(
+          label: 'SUNSET',
+          backgroundBase: Color(0xFF17110D),
+          backgroundGradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF1F1610), Color(0xFF0E0A08)],
+          ),
+          surfaceGradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF2A1D14), Color(0xFF17100D)],
+          ),
+          panelColor: Color(0xB2241812),
+          panelBorder: Color(0x30FEC931),
+          titleColor: Color(0xFFFFE3AE),
+          bodyColor: Color(0xFFD7C2AF),
+          mutedColor: Color(0xFFA8927C),
+          primaryAccent: Color(0xFFFEC931),
+          secondaryAccent: Color(0xFFFFB57B),
+          topOrbColor: Color(0x16FEC931),
+          bottomOrbColor: Color(0x18FF7043),
+        );
+      case AppThemeStyle.frost:
+        return const NeuralVisualTheme(
+          label: 'FROST',
+          backgroundBase: Color(0xFF10171D),
+          backgroundGradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF415564), Color(0xFF0E1419)],
+          ),
+          surfaceGradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF60717D), Color(0xFF243540)],
+          ),
+          panelColor: Color(0xB36A7984),
+          panelBorder: Color(0x3DE4F3FF),
+          titleColor: Color(0xFFF3FBFF),
+          bodyColor: Color(0xFFD8E5EC),
+          mutedColor: Color(0xFFAABBC6),
+          primaryAccent: Color(0xFFE4F6FF),
+          secondaryAccent: Color(0xFFB9D1DE),
+          topOrbColor: Color(0x30F6FBFF),
+          bottomOrbColor: Color(0x1E8FA3B5),
+        );
+    }
+  }
+}
+
+class NeuralVisualTheme {
+  const NeuralVisualTheme({
+    required this.label,
+    required this.backgroundBase,
+    required this.backgroundGradient,
+    required this.surfaceGradient,
+    required this.panelColor,
+    required this.panelBorder,
+    required this.titleColor,
+    required this.bodyColor,
+    required this.mutedColor,
+    required this.primaryAccent,
+    required this.secondaryAccent,
+    required this.topOrbColor,
+    required this.bottomOrbColor,
+  });
+
+  final String label;
+  final Color backgroundBase;
+  final LinearGradient backgroundGradient;
+  final LinearGradient surfaceGradient;
+  final Color panelColor;
+  final Color panelBorder;
+  final Color titleColor;
+  final Color bodyColor;
+  final Color mutedColor;
+  final Color primaryAccent;
+  final Color secondaryAccent;
+  final Color topOrbColor;
+  final Color bottomOrbColor;
 }
 
 const double _navBarBaseHeight = 88;
@@ -310,20 +425,17 @@ class MainMenuScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final NeuralVisualTheme visualTheme = NeuralTheme.visualThemeFor(
+      settings.value.appTheme,
+    );
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
     final double bottomNavHeight = 74 + math.max(12, bottomInset);
     return Scaffold(
       body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF131313), Color(0xFF0E0E0E)],
-          ),
-        ),
+        decoration: BoxDecoration(gradient: visualTheme.backgroundGradient),
         child: Stack(
           children: [
-            const _BackgroundEffects(),
+            _BackgroundEffects(themeStyle: settings.value.appTheme),
             SafeArea(
               bottom: false,
               child: Column(
@@ -443,14 +555,17 @@ class StatsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final NeuralVisualTheme visualTheme = NeuralTheme.visualThemeFor(
+      settings.value.appTheme,
+    );
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
     final double bottomNavHeight = _navBarBaseHeight + bottomInset;
     return Scaffold(
       body: DecoratedBox(
-        decoration: const BoxDecoration(color: NeuralTheme.background),
+        decoration: BoxDecoration(gradient: visualTheme.backgroundGradient),
         child: Stack(
           children: [
-            const _BackgroundEffects(),
+            _BackgroundEffects(themeStyle: settings.value.appTheme),
             SafeArea(
               bottom: false,
               child: Column(
@@ -527,22 +642,25 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
     final double bottomNavHeight = _navBarBaseHeight + bottomInset;
-    return Scaffold(
-      body: DecoratedBox(
-        decoration: const BoxDecoration(color: NeuralTheme.background),
-        child: Stack(
-          children: [
-            const _BackgroundEffects(),
-            SafeArea(
-              bottom: false,
-              child: Column(
-                children: [
-                  NeuralTopBar(onBack: () => Navigator.of(context).pop()),
-                  Expanded(
-                    child: ValueListenableBuilder<NeuralSettings>(
-                      valueListenable: settings,
-                      builder: (context, currentSettings, _) {
-                        return ValueListenableBuilder<PlayerStats>(
+    return ValueListenableBuilder<NeuralSettings>(
+      valueListenable: settings,
+      builder: (context, currentSettings, _) {
+        final NeuralVisualTheme visualTheme = NeuralTheme.visualThemeFor(
+          currentSettings.appTheme,
+        );
+        return Scaffold(
+          body: DecoratedBox(
+            decoration: BoxDecoration(gradient: visualTheme.backgroundGradient),
+            child: Stack(
+              children: [
+                _BackgroundEffects(themeStyle: currentSettings.appTheme),
+                SafeArea(
+                  bottom: false,
+                  child: Column(
+                    children: [
+                      NeuralTopBar(onBack: () => Navigator.of(context).pop()),
+                      Expanded(
+                        child: ValueListenableBuilder<PlayerStats>(
                           valueListenable: playerStats,
                           builder: (context, currentStats, child) {
                             return SingleChildScrollView(
@@ -566,38 +684,38 @@ class SettingsScreen extends StatelessWidget {
                               ),
                             );
                           },
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: NeuralBottomNav(
-                selected: NeuralNavItem.settings,
-                onItemSelected: (item) {
-                  if (item == NeuralNavItem.grid) {
-                    Navigator.of(context).pop();
-                  }
-                  if (item == NeuralNavItem.stats) {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute<void>(
-                        builder: (_) => StatsScreen(
-                          playerStats: playerStats,
-                          settings: settings,
-                          onSettingsChanged: onSettingsChanged,
                         ),
                       ),
-                    );
-                  }
-                },
-              ),
+                    ],
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: NeuralBottomNav(
+                    selected: NeuralNavItem.settings,
+                    onItemSelected: (item) {
+                      if (item == NeuralNavItem.grid) {
+                        Navigator.of(context).pop();
+                      }
+                      if (item == NeuralNavItem.stats) {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute<void>(
+                            builder: (_) => StatsScreen(
+                              playerStats: playerStats,
+                              settings: settings,
+                              onSettingsChanged: onSettingsChanged,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -615,21 +733,71 @@ class _SettingsDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final NeuralVisualTheme activeTheme = NeuralTheme.visualThemeFor(
+      settings.appTheme,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'SYSTEM PREFERENCES',
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: NeuralTheme.textDim.withValues(alpha: 0.52),
+            color: activeTheme.mutedColor.withValues(alpha: 0.72),
           ),
         ),
         const SizedBox(height: 18),
         _SettingsHeroCard(bestStreak: bestStreak, settings: settings),
         const SizedBox(height: 22),
-        const _SettingsSectionTitle(
+        _SettingsSectionTitle(
+          label: 'VISUAL THEME',
+          subtitle: 'Change the app atmosphere and accent glow.',
+          visualTheme: activeTheme,
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: _ThemeOptionButton(
+                themeStyle: AppThemeStyle.neon,
+                selected: settings.appTheme == AppThemeStyle.neon,
+                onTap: () {
+                  onSettingsChanged(
+                    settings.copyWith(appTheme: AppThemeStyle.neon),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _ThemeOptionButton(
+                themeStyle: AppThemeStyle.sunset,
+                selected: settings.appTheme == AppThemeStyle.sunset,
+                onTap: () {
+                  onSettingsChanged(
+                    settings.copyWith(appTheme: AppThemeStyle.sunset),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _ThemeOptionButton(
+                themeStyle: AppThemeStyle.frost,
+                selected: settings.appTheme == AppThemeStyle.frost,
+                onTap: () {
+                  onSettingsChanged(
+                    settings.copyWith(appTheme: AppThemeStyle.frost),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        _SettingsSectionTitle(
           label: 'QUICK PRESETS',
           subtitle: 'Switch the board profile in a single tap.',
+          visualTheme: activeTheme,
         ),
         const SizedBox(height: 14),
         Row(
@@ -639,6 +807,7 @@ class _SettingsDashboard extends StatelessWidget {
                 label: 'CALM',
                 selected: settings.presetLabel == 'CALM',
                 accent: NeuralTheme.primary,
+                visualTheme: activeTheme,
                 onTap: () {
                   onSettingsChanged(
                     const NeuralSettings(
@@ -658,6 +827,7 @@ class _SettingsDashboard extends StatelessWidget {
                 label: 'STANDARD',
                 selected: settings.presetLabel == 'STANDARD',
                 accent: NeuralTheme.secondarySoft,
+                visualTheme: activeTheme,
                 onTap: () {
                   onSettingsChanged(const NeuralSettings());
                 },
@@ -669,6 +839,7 @@ class _SettingsDashboard extends StatelessWidget {
                 label: 'HARDCORE',
                 selected: settings.presetLabel == 'HARDCORE',
                 accent: NeuralTheme.tertiary,
+                visualTheme: activeTheme,
                 onTap: () {
                   onSettingsChanged(
                     const NeuralSettings(
@@ -685,9 +856,10 @@ class _SettingsDashboard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 24),
-        const _SettingsSectionTitle(
+        _SettingsSectionTitle(
           label: 'GAMEPLAY',
           subtitle: 'Tune how much support the run gives you.',
+          visualTheme: activeTheme,
         ),
         const SizedBox(height: 14),
         _SettingsToggleCard(
@@ -697,6 +869,7 @@ class _SettingsDashboard extends StatelessWidget {
               'Extends the overdrive tap timer so late-round inputs stay readable.',
           value: settings.focusAssistEnabled,
           accent: NeuralTheme.secondarySoft,
+          visualTheme: activeTheme,
           onChanged: (enabled) {
             onSettingsChanged(settings.copyWith(focusAssistEnabled: enabled));
           },
@@ -709,6 +882,7 @@ class _SettingsDashboard extends StatelessWidget {
               'Shows the live guidance card under the board during rounds.',
           value: settings.trainingHintsEnabled,
           accent: NeuralTheme.primary,
+          visualTheme: activeTheme,
           onChanged: (enabled) {
             onSettingsChanged(settings.copyWith(trainingHintsEnabled: enabled));
           },
@@ -721,14 +895,16 @@ class _SettingsDashboard extends StatelessWidget {
               'Requires confirmation before wiping the current run from the game screen.',
           value: settings.confirmResetEnabled,
           accent: NeuralTheme.tertiary,
+          visualTheme: activeTheme,
           onChanged: (enabled) {
             onSettingsChanged(settings.copyWith(confirmResetEnabled: enabled));
           },
         ),
         const SizedBox(height: 24),
-        const _SettingsSectionTitle(
+        _SettingsSectionTitle(
           label: 'INTERFACE',
           subtitle: 'Adjust feedback and motion intensity.',
+          visualTheme: activeTheme,
         ),
         const SizedBox(height: 14),
         _SettingsToggleCard(
@@ -738,6 +914,7 @@ class _SettingsDashboard extends StatelessWidget {
               'Adds tactile pulses for sequence playback, correct taps, and failures.',
           value: settings.hapticsEnabled,
           accent: NeuralTheme.primarySoft,
+          visualTheme: activeTheme,
           onChanged: (enabled) {
             onSettingsChanged(settings.copyWith(hapticsEnabled: enabled));
           },
@@ -750,6 +927,7 @@ class _SettingsDashboard extends StatelessWidget {
               'Shortens flashes and transitions to keep the board calmer and snappier.',
           value: settings.reducedMotion,
           accent: NeuralTheme.textMuted,
+          visualTheme: activeTheme,
           onChanged: (enabled) {
             onSettingsChanged(settings.copyWith(reducedMotion: enabled));
           },
@@ -759,16 +937,14 @@ class _SettingsDashboard extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: NeuralTheme.surface.withValues(alpha: 0.72),
+            color: activeTheme.panelColor,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: NeuralTheme.outline.withValues(alpha: 0.18),
-            ),
+            border: Border.all(color: activeTheme.panelBorder),
           ),
-          child: const Text(
+          child: Text(
             'Settings apply immediately and are saved for the next time you open the app.',
             style: TextStyle(
-              color: NeuralTheme.textMuted,
+              color: activeTheme.bodyColor,
               fontSize: 13,
               height: 1.45,
             ),
@@ -787,19 +963,22 @@ class _SettingsHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final NeuralVisualTheme visualTheme = NeuralTheme.visualThemeFor(
+      settings.appTheme,
+    );
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(26),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1D2326), Color(0xFF151617)],
-        ),
-        border: Border.all(color: NeuralTheme.primary.withValues(alpha: 0.15)),
-        boxShadow: const [
-          BoxShadow(color: Color(0x1600E5FF), blurRadius: 28, spreadRadius: 1),
+        gradient: visualTheme.surfaceGradient,
+        border: Border.all(color: visualTheme.panelBorder),
+        boxShadow: [
+          BoxShadow(
+            color: visualTheme.primaryAccent.withValues(alpha: 0.10),
+            blurRadius: 28,
+            spreadRadius: 1,
+          ),
         ],
       ),
       child: Column(
@@ -811,12 +990,12 @@ class _SettingsHeroCard extends StatelessWidget {
                 width: 68,
                 height: 68,
                 decoration: BoxDecoration(
-                  color: NeuralTheme.primary.withValues(alpha: 0.12),
+                  color: visualTheme.primaryAccent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(22),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.tune_rounded,
-                  color: NeuralTheme.primary,
+                  color: visualTheme.primaryAccent,
                   size: 34,
                 ),
               ),
@@ -825,10 +1004,10 @@ class _SettingsHeroCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'CONTROL DECK',
                       style: TextStyle(
-                        color: NeuralTheme.primarySoft,
+                        color: visualTheme.titleColor,
                         fontSize: 24,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -0.8,
@@ -836,9 +1015,9 @@ class _SettingsHeroCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Preset ${settings.presetLabel} active. Best streak recorded: $bestStreak.',
-                      style: const TextStyle(
-                        color: NeuralTheme.textMuted,
+                      'Preset ${settings.presetLabel} active. Theme ${visualTheme.label} loaded. Best streak recorded: $bestStreak.',
+                      style: TextStyle(
+                        color: visualTheme.bodyColor,
                         fontSize: 14,
                         height: 1.45,
                       ),
@@ -855,7 +1034,8 @@ class _SettingsHeroCard extends StatelessWidget {
                 child: _SettingsStatChip(
                   label: 'BEST CHAIN',
                   value: '$bestStreak',
-                  accent: NeuralTheme.primary,
+                  accent: visualTheme.primaryAccent,
+                  visualTheme: visualTheme,
                 ),
               ),
               const SizedBox(width: 12),
@@ -863,15 +1043,17 @@ class _SettingsHeroCard extends StatelessWidget {
                 child: _SettingsStatChip(
                   label: 'LIVE PROFILE',
                   value: settings.presetLabel,
-                  accent: NeuralTheme.secondarySoft,
+                  accent: visualTheme.secondaryAccent,
+                  visualTheme: visualTheme,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _SettingsStatChip(
-                  label: 'MOTION',
-                  value: settings.reducedMotion ? 'LOW' : 'FULL',
-                  accent: NeuralTheme.tertiary,
+                  label: 'LIVE THEME',
+                  value: visualTheme.label,
+                  accent: visualTheme.primaryAccent,
+                  visualTheme: visualTheme,
                 ),
               ),
             ],
@@ -887,20 +1069,22 @@ class _SettingsStatChip extends StatelessWidget {
     required this.label,
     required this.value,
     required this.accent,
+    required this.visualTheme,
   });
 
   final String label;
   final String value;
   final Color accent;
+  final NeuralVisualTheme visualTheme;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       decoration: BoxDecoration(
-        color: NeuralTheme.surface.withValues(alpha: 0.72),
+        color: visualTheme.panelColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: accent.withValues(alpha: 0.18)),
+        border: Border.all(color: visualTheme.panelBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -909,15 +1093,23 @@ class _SettingsStatChip extends StatelessWidget {
             label,
             style: Theme.of(
               context,
-            ).textTheme.labelSmall?.copyWith(color: NeuralTheme.textDim),
+            ).textTheme.labelSmall?.copyWith(color: visualTheme.mutedColor),
           ),
           const SizedBox(height: 6),
-          Text(
-            value,
-            style: TextStyle(
-              color: accent,
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
+          SizedBox(
+            height: 48,
+            child: FittedBox(
+              alignment: Alignment.centerLeft,
+              fit: BoxFit.scaleDown,
+              child: Text(
+                value,
+                maxLines: 1,
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
           ),
         ],
@@ -927,10 +1119,15 @@ class _SettingsStatChip extends StatelessWidget {
 }
 
 class _SettingsSectionTitle extends StatelessWidget {
-  const _SettingsSectionTitle({required this.label, required this.subtitle});
+  const _SettingsSectionTitle({
+    required this.label,
+    required this.subtitle,
+    required this.visualTheme,
+  });
 
   final String label;
   final String subtitle;
+  final NeuralVisualTheme visualTheme;
 
   @override
   Widget build(BuildContext context) {
@@ -939,15 +1136,15 @@ class _SettingsSectionTitle extends StatelessWidget {
       children: [
         Text(
           label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: NeuralTheme.textDim.withValues(alpha: 0.72),
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.labelSmall?.copyWith(color: visualTheme.mutedColor),
         ),
         const SizedBox(height: 6),
         Text(
           subtitle,
-          style: const TextStyle(
-            color: NeuralTheme.textMuted,
+          style: TextStyle(
+            color: visualTheme.bodyColor,
             fontSize: 14,
             height: 1.4,
           ),
@@ -964,6 +1161,7 @@ class _SettingsToggleCard extends StatelessWidget {
     required this.description,
     required this.value,
     required this.accent,
+    required this.visualTheme,
     required this.onChanged,
   });
 
@@ -972,6 +1170,7 @@ class _SettingsToggleCard extends StatelessWidget {
   final String description;
   final bool value;
   final Color accent;
+  final NeuralVisualTheme visualTheme;
   final ValueChanged<bool> onChanged;
 
   @override
@@ -980,9 +1179,9 @@ class _SettingsToggleCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: NeuralTheme.surface.withValues(alpha: 0.82),
+        color: visualTheme.panelColor,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: accent.withValues(alpha: 0.18)),
+        border: Border.all(color: visualTheme.panelBorder),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -995,8 +1194,8 @@ class _SettingsToggleCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: NeuralTheme.text,
+                  style: TextStyle(
+                    color: visualTheme.titleColor,
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
                   ),
@@ -1004,8 +1203,8 @@ class _SettingsToggleCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   description,
-                  style: const TextStyle(
-                    color: NeuralTheme.textMuted,
+                  style: TextStyle(
+                    color: visualTheme.bodyColor,
                     fontSize: 13,
                     height: 1.45,
                   ),
@@ -1019,8 +1218,8 @@ class _SettingsToggleCard extends StatelessWidget {
             onChanged: onChanged,
             activeThumbColor: accent,
             activeTrackColor: accent.withValues(alpha: 0.35),
-            inactiveThumbColor: NeuralTheme.textMuted,
-            inactiveTrackColor: NeuralTheme.surfaceHighest,
+            inactiveThumbColor: visualTheme.bodyColor,
+            inactiveTrackColor: visualTheme.mutedColor.withValues(alpha: 0.35),
           ),
         ],
       ),
@@ -1033,12 +1232,14 @@ class _PresetButton extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.accent,
+    required this.visualTheme,
     required this.onTap,
   });
 
   final String label;
   final bool selected;
   final Color accent;
+  final NeuralVisualTheme visualTheme;
   final VoidCallback onTap;
 
   @override
@@ -1053,24 +1254,105 @@ class _PresetButton extends StatelessWidget {
           decoration: BoxDecoration(
             color: selected
                 ? accent.withValues(alpha: 0.16)
-                : NeuralTheme.surface.withValues(alpha: 0.65),
+                : visualTheme.panelColor,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: selected
                   ? accent.withValues(alpha: 0.28)
-                  : NeuralTheme.outline.withValues(alpha: 0.16),
+                  : visualTheme.panelBorder,
             ),
           ),
           child: Center(
             child: Text(
               label,
               style: TextStyle(
-                color: selected ? accent : NeuralTheme.textMuted,
+                color: selected ? accent : visualTheme.bodyColor,
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.2,
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThemeOptionButton extends StatelessWidget {
+  const _ThemeOptionButton({
+    required this.themeStyle,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AppThemeStyle themeStyle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final NeuralVisualTheme visualTheme = NeuralTheme.visualThemeFor(
+      themeStyle,
+    );
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: selected
+                ? visualTheme.primaryAccent.withValues(alpha: 0.14)
+                : visualTheme.panelColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected
+                  ? visualTheme.primaryAccent.withValues(alpha: 0.30)
+                  : visualTheme.panelBorder,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                height: 52,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: visualTheme.backgroundGradient,
+                ),
+                child: Stack(
+                  children: [
+                    Positioned(
+                      top: -10,
+                      right: -8,
+                      child: _GlowOrb(size: 36, color: visualTheme.topOrbColor),
+                    ),
+                    Positioned(
+                      bottom: -12,
+                      left: -10,
+                      child: _GlowOrb(
+                        size: 34,
+                        color: visualTheme.bottomOrbColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                visualTheme.label,
+                style: TextStyle(
+                  color: selected
+                      ? visualTheme.primaryAccent
+                      : visualTheme.bodyColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1743,14 +2025,17 @@ class _GameScreenState extends State<GameScreen> {
   @override
   Widget build(BuildContext context) {
     final bool isFocus = widget.mode == GameMode.focus;
+    final NeuralVisualTheme visualTheme = NeuralTheme.visualThemeFor(
+      widget.settings.appTheme,
+    );
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
     final double bottomNavHeight = _navBarBaseHeight + bottomInset;
     return Scaffold(
       body: DecoratedBox(
-        decoration: const BoxDecoration(color: NeuralTheme.background),
+        decoration: BoxDecoration(gradient: visualTheme.backgroundGradient),
         child: Stack(
           children: [
-            const _BackgroundEffects(),
+            _BackgroundEffects(themeStyle: widget.settings.appTheme),
             SafeArea(
               bottom: false,
               child: Column(
@@ -3184,24 +3469,29 @@ class _IconPlate extends StatelessWidget {
 }
 
 class _BackgroundEffects extends StatelessWidget {
-  const _BackgroundEffects();
+  const _BackgroundEffects({required this.themeStyle});
+
+  final AppThemeStyle themeStyle;
 
   @override
   Widget build(BuildContext context) {
-    return const IgnorePointer(
+    final NeuralVisualTheme visualTheme = NeuralTheme.visualThemeFor(
+      themeStyle,
+    );
+    return IgnorePointer(
       child: Stack(
         children: [
           Positioned(
             top: -120,
             right: -80,
-            child: _GlowOrb(size: 280, color: Color(0x1100E5FF)),
+            child: _GlowOrb(size: 280, color: visualTheme.topOrbColor),
           ),
           Positioned(
             bottom: -80,
             left: -100,
-            child: _GlowOrb(size: 240, color: Color(0x147C4DFF)),
+            child: _GlowOrb(size: 240, color: visualTheme.bottomOrbColor),
           ),
-          Positioned.fill(child: _GridOverlay()),
+          const Positioned.fill(child: _GridOverlay()),
         ],
       ),
     );
