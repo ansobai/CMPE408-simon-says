@@ -33,6 +33,11 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Local presentation/export artifacts
+/presentation_assets/
+/lib/presentation_export.dart
+/tool/create_presentation.ps1
+
 # Symbolication related
 app.*.symbols
 
