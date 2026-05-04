@@ -388,7 +388,9 @@ class MainMenuScreen extends StatelessWidget {
                             const Spacer(),
                             Text(
                               'V1.0.0',
-                              style: Theme.of(context).textTheme.labelSmall
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
                                   ?.copyWith(
                                     color: NeuralTheme.textDim.withValues(
                                       alpha: 0.5,
@@ -441,7 +443,8 @@ class MainMenuScreen extends StatelessWidget {
   Future<void> _openStats(BuildContext context) {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => StatsScreen(playerStats: playerStats, settings: settings),
+        builder: (_) =>
+            StatsScreen(playerStats: playerStats, settings: settings),
       ),
     );
   }
@@ -646,8 +649,8 @@ class _SettingsDashboard extends StatelessWidget {
         Text(
           'SYSTEM PREFERENCES',
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: NeuralTheme.textDim.withValues(alpha: 0.52),
-          ),
+                color: NeuralTheme.textDim.withValues(alpha: 0.52),
+              ),
         ),
         const SizedBox(height: 18),
         _SettingsHeroCard(bestStreak: bestStreak, settings: settings),
@@ -965,8 +968,8 @@ class _SettingsSectionTitle extends StatelessWidget {
         Text(
           label,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: NeuralTheme.textDim.withValues(alpha: 0.72),
-          ),
+                color: NeuralTheme.textDim.withValues(alpha: 0.72),
+              ),
         ),
         const SizedBox(height: 6),
         Text(
@@ -1116,8 +1119,8 @@ class _StatsDashboard extends StatelessWidget {
         Text(
           'PERFORMANCE',
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: NeuralTheme.textDim.withValues(alpha: 0.52),
-          ),
+                color: NeuralTheme.textDim.withValues(alpha: 0.52),
+              ),
         ),
         const SizedBox(height: 10),
         Text(
@@ -1471,9 +1474,8 @@ class _GameScreenState extends State<GameScreen> {
         return;
       }
 
-      final int remainingMs = deadline
-          .difference(DateTime.now())
-          .inMilliseconds;
+      final int remainingMs =
+          deadline.difference(DateTime.now()).inMilliseconds;
       if (remainingMs <= 0) {
         timer.cancel();
         if (!mounted || session != _sessionId) {
@@ -1639,8 +1641,7 @@ class _GameScreenState extends State<GameScreen> {
       endReason: endReason,
     );
 
-    final bool restart =
-        await showDialog<bool>(
+    final bool restart = await showDialog<bool>(
           context: context,
           barrierDismissible: false,
           builder: (context) => GameOverDialog(
@@ -1671,22 +1672,22 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Duration get _flashDuration => widget.settings.tuneDuration(
-    widget.mode.flashDuration,
-    reducedFactor: 0.68,
-    minMilliseconds: 110,
-  );
+        widget.mode.flashDuration,
+        reducedFactor: 0.68,
+        minMilliseconds: 110,
+      );
 
   Duration get _flashGapDuration => widget.settings.tuneDuration(
-    widget.mode.flashGap,
-    reducedFactor: 0.68,
-    minMilliseconds: 50,
-  );
+        widget.mode.flashGap,
+        reducedFactor: 0.68,
+        minMilliseconds: 50,
+      );
 
   Duration get _roundLeadInDuration => widget.settings.tuneDuration(
-    widget.mode.roundLeadIn,
-    reducedFactor: 0.72,
-    minMilliseconds: 140,
-  );
+        widget.mode.roundLeadIn,
+        reducedFactor: 0.72,
+        minMilliseconds: 140,
+      );
 
   void _playSequenceHaptic() {
     if (!widget.settings.hapticsEnabled) {
@@ -1816,21 +1817,27 @@ class _GameScreenState extends State<GameScreen> {
                               progress: _sequenceProgress,
                               timerProgress:
                                   _inputWindowForCurrentTurn() == null
-                                  ? null
-                                  : _timerProgress,
+                                      ? null
+                                      : _timerProgress,
                             ),
                             const SizedBox(height: 24),
-                            _GameBoard(
-                              gridSize: widget.mode.gridSize,
-                              highlightedTile: _highlightedTile,
-                              pressedTile: _pressedTile,
-                              errorTile: _errorTile,
-                              accent: widget.mode.accent,
-                              icon: widget.mode.icon,
-                              enabled: _phase == GamePhase.input,
-                              onTap: _handleTileTap,
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.topCenter,
+                                child: _GameBoard(
+                                  gridSize: widget.mode.gridSize,
+                                  highlightedTile: _highlightedTile,
+                                  pressedTile: _pressedTile,
+                                  errorTile: _errorTile,
+                                  accent: widget.mode.accent,
+                                  icon: widget.mode.icon,
+                                  enabled: _phase == GamePhase.input,
+                                  onTap: _handleTileTap,
+                                ),
+                              ),
                             ),
-                            const SizedBox(height: 28),
+                            if (widget.settings.trainingHintsEnabled)
+                              const SizedBox(height: 20),
                             if (widget.settings.trainingHintsEnabled)
                               _ModeHintCard(
                                 mode: widget.mode,
@@ -2072,9 +2079,8 @@ class _ModeButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 22),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
-            color: isOverdrive
-                ? const Color(0x185203D5)
-                : NeuralTheme.surfaceHigh,
+            color:
+                isOverdrive ? const Color(0x185203D5) : NeuralTheme.surfaceHigh,
             border: Border.all(
               color: isOverdrive
                   ? NeuralTheme.secondary.withValues(alpha: 0.20)
@@ -2212,8 +2218,8 @@ class _FocusDashboard extends StatelessWidget {
           child: Text(
             phaseLabel,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: NeuralTheme.primarySoft.withValues(alpha: 0.75),
-            ),
+                  color: NeuralTheme.primarySoft.withValues(alpha: 0.75),
+                ),
           ),
         ),
       ],
@@ -2325,8 +2331,8 @@ class _OverdriveDashboard extends StatelessWidget {
               child: Text(
                 phaseLabel,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: NeuralTheme.secondarySoft.withValues(alpha: 0.80),
-                ),
+                      color: NeuralTheme.secondarySoft.withValues(alpha: 0.80),
+                    ),
               ),
             ),
             SizedBox(
@@ -2490,8 +2496,8 @@ class _ModeProgress extends StatelessWidget {
               Text(
                 'UNTIMED',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: NeuralTheme.primarySoft.withValues(alpha: 0.65),
-                ),
+                      color: NeuralTheme.primarySoft.withValues(alpha: 0.65),
+                    ),
               ),
           ],
         ),
@@ -2593,15 +2599,15 @@ class _BoardTile extends StatelessWidget {
           color: error
               ? NeuralTheme.errorContainer.withValues(alpha: 0.90)
               : active
-              ? accent
-              : NeuralTheme.surfaceHigh,
+                  ? accent
+                  : NeuralTheme.surfaceHigh,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
             color: error
                 ? NeuralTheme.error.withValues(alpha: 0.40)
                 : active
-                ? NeuralTheme.primarySoft.withValues(alpha: 0.30)
-                : NeuralTheme.outline.withValues(alpha: 0.12),
+                    ? NeuralTheme.primarySoft.withValues(alpha: 0.30)
+                    : NeuralTheme.outline.withValues(alpha: 0.12),
             width: active || error ? 2 : 1,
           ),
           boxShadow: active || error
@@ -2622,14 +2628,14 @@ class _BoardTile extends StatelessWidget {
             opacity: active || error
                 ? 1
                 : enabled
-                ? 0.24
-                : 0.12,
+                    ? 0.24
+                    : 0.12,
             child: Icon(
               error
                   ? Icons.close_rounded
                   : active
-                  ? icon
-                  : Icons.grid_4x4_rounded,
+                      ? icon
+                      : Icons.grid_4x4_rounded,
               size: active || error ? 38 : 24,
               color: active || error ? Colors.white : NeuralTheme.textDim,
             ),
@@ -2952,8 +2958,8 @@ class GameOverDialog extends StatelessWidget {
                 Text(
                   'FINAL SCORE',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: NeuralTheme.textMuted,
-                  ),
+                        color: NeuralTheme.textMuted,
+                      ),
                 ),
                 const SizedBox(height: 4),
                 Text(
