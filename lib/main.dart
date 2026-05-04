@@ -2890,7 +2890,7 @@ class GameOverDialog extends StatelessWidget {
                       ),
                     ),
                     child: const Text(
-                      'REBOOT',
+                      'PLAY AGAIN',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
@@ -2922,17 +2922,6 @@ class GameOverDialog extends StatelessWidget {
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    _TinyPulse(active: true),
-                    SizedBox(width: 6),
-                    _TinyPulse(active: false),
-                    SizedBox(width: 6),
-                    _TinyPulse(active: false),
-                  ],
                 ),
               ],
             ),
@@ -3149,26 +3138,6 @@ class _DotGridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _TinyPulse extends StatelessWidget {
-  const _TinyPulse({required this.active});
-
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 6,
-      height: 6,
-      decoration: BoxDecoration(
-        color: active
-            ? NeuralTheme.secondary
-            : NeuralTheme.secondarySoft.withValues(alpha: 0.30),
-        shape: BoxShape.circle,
-      ),
-    );
-  }
 }
 
 String _formatNumber(int value) {
