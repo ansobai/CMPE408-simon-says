@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'neural_sound_controller.dart';
+import 'stats/local_stats_repository.dart';
+import 'stats/stats_models.dart';
+import 'stats/stats_repository.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,34 +16,65 @@ Future<void> main() async {
 }
 
 class NeuralRecallApp extends StatefulWidget {
-  const NeuralRecallApp({super.key});
+  const NeuralRecallApp({super.key, this.statsRepository});
+
+  final StatsRepository? statsRepository;
 
   @override
   State<NeuralRecallApp> createState() => _NeuralRecallAppState();
 }
 
 class _NeuralRecallAppState extends State<NeuralRecallApp> {
-  final ValueNotifier<int> _bestStreak = ValueNotifier<int>(24);
+  final ValueNotifier<PlayerStats> _playerStats = ValueNotifier<PlayerStats>(
+    PlayerStats.empty(),
+  );
   final ValueNotifier<NeuralSettings> _settings = ValueNotifier<NeuralSettings>(
     const NeuralSettings(),
   );
+  late final StatsRepository _statsRepository;
+  bool _isLoadingStats = true;
 
   @override
   void initState() {
     super.initState();
+    _statsRepository = widget.statsRepository ?? LocalStatsRepository();
     WidgetsBinding.instance.addObserver(_fullscreenObserver);
+    unawaited(_loadPersistedStats());
   }
 
-  void _updateBestStreak(int streak) {
-    if (streak > _bestStreak.value) {
-      _bestStreak.value = streak;
+  Future<void> _loadPersistedStats() async {
+    PlayerStats stats = PlayerStats.empty();
+
+    try {
+      stats = await _statsRepository.loadStats();
+    } catch (_) {
+      stats = PlayerStats.empty();
+    } finally {
+      if (!mounted) {
+        return;
+      }
+
+      _playerStats.value = stats;
+      setState(() {
+        _isLoadingStats = false;
+      });
     }
+  }
+
+  Future<void> _saveCompletedSession(GameSession session) async {
+    await _statsRepository.saveCompletedSession(session);
+    final PlayerStats stats = await _statsRepository.loadStats();
+    if (!mounted) {
+      return;
+    }
+
+    _playerStats.value = stats;
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(_fullscreenObserver);
-    _bestStreak.dispose();
+    _playerStats.dispose();
     _settings.dispose();
     super.dispose();
   }
@@ -54,13 +88,39 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: NeuralTheme.materialTheme,
-          home: MainMenuScreen(
-            bestStreak: _bestStreak,
-            settings: _settings,
-            onNewBest: _updateBestStreak,
-          ),
+          home: _isLoadingStats
+              ? const _StartupLoadingScreen()
+              : MainMenuScreen(
+                  playerStats: _playerStats,
+                  settings: _settings,
+                  onSessionCompleted: _saveCompletedSession,
+                ),
         );
       },
+    );
+  }
+}
+
+class _StartupLoadingScreen extends StatelessWidget {
+  const _StartupLoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: NeuralTheme.background,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: NeuralTheme.primary),
+            SizedBox(height: 20),
+            Text(
+              'Loading neural profile...',
+              style: TextStyle(color: NeuralTheme.textMuted),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -401,17 +461,28 @@ enum GameMode {
 
 enum GamePhase { booting, showing, input, roundClear, failed }
 
+extension on GameMode {
+  GameModeKey get statsKey {
+    switch (this) {
+      case GameMode.focus:
+        return GameModeKey.focus;
+      case GameMode.overdrive:
+        return GameModeKey.overdrive;
+    }
+  }
+}
+
 class MainMenuScreen extends StatelessWidget {
   const MainMenuScreen({
     super.key,
-    required this.bestStreak,
+    required this.playerStats,
     required this.settings,
-    required this.onNewBest,
+    required this.onSessionCompleted,
   });
 
-  final ValueNotifier<int> bestStreak;
+  final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
-  final ValueChanged<int> onNewBest;
+  final Future<void> Function(GameSession session) onSessionCompleted;
 
   @override
   Widget build(BuildContext context) {
@@ -490,9 +561,9 @@ class MainMenuScreen extends StatelessWidget {
       MaterialPageRoute<void>(
         builder: (_) => GameScreen(
           mode: mode,
-          initialBestStreak: bestStreak.value,
+          initialBestStreak: playerStats.value.bestStreak,
           settings: settings.value,
-          onNewBest: onNewBest,
+          onSessionCompleted: onSessionCompleted,
         ),
       ),
     );
@@ -502,7 +573,7 @@ class MainMenuScreen extends StatelessWidget {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) =>
-            SettingsScreen(bestStreak: bestStreak, settings: settings),
+            SettingsScreen(playerStats: playerStats, settings: settings),
       ),
     );
   }
@@ -510,7 +581,8 @@ class MainMenuScreen extends StatelessWidget {
   Future<void> _openStats(BuildContext context) {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => StatsScreen(bestStreak: bestStreak, settings: settings),
+        builder: (_) =>
+            StatsScreen(playerStats: playerStats, settings: settings),
       ),
     );
   }
@@ -530,11 +602,11 @@ class MainMenuScreen extends StatelessWidget {
 class StatsScreen extends StatelessWidget {
   const StatsScreen({
     super.key,
-    required this.bestStreak,
+    required this.playerStats,
     required this.settings,
   });
 
-  final ValueNotifier<int> bestStreak;
+  final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
 
   @override
@@ -569,10 +641,10 @@ class StatsScreen extends StatelessWidget {
                               constraints: const BoxConstraints(
                                 maxWidth: _statsScreenDesignWidth,
                               ),
-                              child: ValueListenableBuilder<int>(
-                                valueListenable: bestStreak,
-                                builder: (context, streak, _) {
-                                  return _StatsDashboard(bestStreak: streak);
+                              child: ValueListenableBuilder<PlayerStats>(
+                                valueListenable: playerStats,
+                                builder: (context, stats, _) {
+                                  return _StatsDashboard(stats: stats);
                                 },
                               ),
                             ),
@@ -594,7 +666,7 @@ class StatsScreen extends StatelessWidget {
                         Navigator.of(context).pushReplacement(
                           MaterialPageRoute<void>(
                             builder: (_) => SettingsScreen(
-                              bestStreak: bestStreak,
+                              playerStats: playerStats,
                               settings: settings,
                             ),
                           ),
@@ -615,11 +687,11 @@ class StatsScreen extends StatelessWidget {
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({
     super.key,
-    required this.bestStreak,
+    required this.playerStats,
     required this.settings,
   });
 
-  final ValueNotifier<int> bestStreak;
+  final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
 
   @override
@@ -642,9 +714,9 @@ class SettingsScreen extends StatelessWidget {
                     children: [
                       NeuralTopBar(onBack: () => Navigator.of(context).pop()),
                       Expanded(
-                        child: ValueListenableBuilder<int>(
-                          valueListenable: bestStreak,
-                          builder: (context, streak, child) {
+                        child: ValueListenableBuilder<PlayerStats>(
+                          valueListenable: playerStats,
+                          builder: (context, currentStats, child) {
                             return SingleChildScrollView(
                               padding: EdgeInsets.fromLTRB(
                                 24,
@@ -658,7 +730,7 @@ class SettingsScreen extends StatelessWidget {
                                     maxWidth: _statsScreenDesignWidth,
                                   ),
                                   child: _SettingsDashboard(
-                                    bestStreak: streak,
+                                    bestStreak: currentStats.bestStreak,
                                     settings: currentSettings,
                                     onSettingsChanged: (nextSettings) {
                                       settings.value = nextSettings;
@@ -685,7 +757,7 @@ class SettingsScreen extends StatelessWidget {
                         Navigator.of(context).pushReplacement(
                           MaterialPageRoute<void>(
                             builder: (_) => StatsScreen(
-                              bestStreak: bestStreak,
+                              playerStats: playerStats,
                               settings: settings,
                             ),
                           ),
@@ -1394,16 +1466,12 @@ class _SettingsSliderCard extends StatelessWidget {
 }
 
 class _StatsDashboard extends StatelessWidget {
-  const _StatsDashboard({required this.bestStreak});
+  const _StatsDashboard({required this.stats});
 
-  final int bestStreak;
+  final PlayerStats stats;
 
   @override
   Widget build(BuildContext context) {
-    final int totalSessions = bestStreak * 3 + 42;
-    final int completionRate = (70 + bestStreak / 2).clamp(0, 98).round();
-    final int reactionTime = (580 - bestStreak * 7).clamp(220, 580).round();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1414,8 +1482,8 @@ class _StatsDashboard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        const Text(
-          'Only the stats that matter, without the clutter.',
+        Text(
+          'Local training record from completed sessions saved on this device.',
           style: TextStyle(
             color: NeuralTheme.textMuted,
             fontSize: 14,
@@ -1423,7 +1491,7 @@ class _StatsDashboard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
-        _BestStreakCard(bestStreak: bestStreak),
+        _BestStreakCard(bestStreak: stats.bestStreak),
         const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
@@ -1439,28 +1507,68 @@ class _StatsDashboard extends StatelessWidget {
                 SizedBox(
                   width: cardWidth,
                   child: _MetricCard(
-                    label: 'REACTION AVG',
-                    value: '$reactionTime ms',
+                    label: 'BEST SCORE',
+                    value: _formatNumber(stats.bestScore),
                     accent: NeuralTheme.secondary,
-                    icon: Icons.flash_on_rounded,
-                  ),
-                ),
-                SizedBox(
-                  width: cardWidth,
-                  child: _MetricCard(
-                    label: 'COMPLETION RATE',
-                    value: '$completionRate%',
-                    accent: NeuralTheme.primary,
-                    icon: Icons.track_changes_rounded,
+                    icon: Icons.emoji_events_rounded,
                   ),
                 ),
                 SizedBox(
                   width: cardWidth,
                   child: _MetricCard(
                     label: 'TOTAL SESSIONS',
-                    value: _formatNumber(totalSessions),
-                    accent: NeuralTheme.primarySoft,
+                    value: _formatNumber(stats.totalSessions),
+                    accent: NeuralTheme.primary,
                     icon: Icons.layers_rounded,
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _MetricCard(
+                    label: 'AVERAGE SCORE',
+                    value: _formatAverage(stats.averageScore),
+                    accent: NeuralTheme.primarySoft,
+                    icon: Icons.bar_chart_rounded,
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _MetricCard(
+                    label: 'AVERAGE ROUNDS',
+                    value: _formatAverage(stats.averageRoundsReached),
+                    accent: NeuralTheme.tertiary,
+                    icon: Icons.route_rounded,
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _MetricCard(
+                    label: 'FOCUS BEST',
+                    value: _formatNumber(
+                      stats.bestScoreByMode[GameModeKey.focus] ?? 0,
+                    ),
+                    accent: NeuralTheme.primary,
+                    icon: Icons.auto_awesome_motion_rounded,
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _MetricCard(
+                    label: 'OVERDRIVE BEST',
+                    value: _formatNumber(
+                      stats.bestScoreByMode[GameModeKey.overdrive] ?? 0,
+                    ),
+                    accent: NeuralTheme.secondarySoft,
+                    icon: Icons.bolt_rounded,
+                  ),
+                ),
+                SizedBox(
+                  width: cardWidth,
+                  child: _MetricCard(
+                    label: 'LAST PLAYED',
+                    value: _formatDate(stats.lastPlayedAt),
+                    accent: NeuralTheme.primarySoft,
+                    icon: Icons.event_rounded,
                   ),
                 ),
               ],
@@ -1527,13 +1635,13 @@ class GameScreen extends StatefulWidget {
     required this.mode,
     required this.initialBestStreak,
     required this.settings,
-    required this.onNewBest,
+    required this.onSessionCompleted,
   });
 
   final GameMode mode;
   final int initialBestStreak;
   final NeuralSettings settings;
-  final ValueChanged<int> onNewBest;
+  final Future<void> Function(GameSession session) onSessionCompleted;
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -1558,6 +1666,8 @@ class _GameScreenState extends State<GameScreen> {
   double _timerProgress = 1;
   GamePhase _phase = GamePhase.booting;
   bool _isSubmitting = false;
+  bool _didRecordCurrentSession = false;
+  DateTime? _sessionStartedAt;
 
   @override
   void initState() {
@@ -1584,6 +1694,7 @@ class _GameScreenState extends State<GameScreen> {
 
   Future<void> _startNewGame() async {
     final int session = ++_sessionId;
+    final DateTime startedAt = DateTime.now();
     _cancelInputTimer();
     if (mounted) {
       setState(() {
@@ -1601,6 +1712,8 @@ class _GameScreenState extends State<GameScreen> {
         _phase = GamePhase.booting;
       });
     }
+    _didRecordCurrentSession = false;
+    _sessionStartedAt = startedAt;
 
     await Future<void>.delayed(
       widget.settings.tuneDuration(
@@ -1730,7 +1843,12 @@ class _GameScreenState extends State<GameScreen> {
         setState(() {
           _timerProgress = 0;
         });
-        unawaited(_handleFailure(reason: 'Time expired'));
+        unawaited(
+          _handleFailure(
+            summary: 'Time expired',
+            endReason: SessionEndReason.timedOut,
+          ),
+        );
         return;
       }
 
@@ -1796,7 +1914,11 @@ class _GameScreenState extends State<GameScreen> {
         ),
       );
       if (_sessionIsActive(session)) {
-        await _handleFailure(reason: 'Wrong tile', errorTile: index);
+        await _handleFailure(
+          summary: 'Wrong tile',
+          endReason: SessionEndReason.wrongTile,
+          errorTile: index,
+        );
       }
       return;
     }
@@ -1846,11 +1968,17 @@ class _GameScreenState extends State<GameScreen> {
     _armInputTimer(session);
   }
 
-  Future<void> _handleFailure({required String reason, int? errorTile}) async {
-    if (_isSubmitting) {
+  Future<void> _handleFailure({
+    required String summary,
+    required SessionEndReason endReason,
+    int? errorTile,
+  }) async {
+    if (_isSubmitting || _didRecordCurrentSession) {
       return;
     }
 
+    _isSubmitting = true;
+    _didRecordCurrentSession = true;
     _cancelInputTimer();
     setState(() {
       _phase = GamePhase.failed;
@@ -1861,26 +1989,43 @@ class _GameScreenState extends State<GameScreen> {
       _timerProgress = 0;
     });
 
-    _isSubmitting = true;
-    final bool? restart = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => GameOverDialog(
-        mode: widget.mode,
-        score: _score,
-        bestRun: _bestRun,
-        roundReached: _round,
-        summary: reason,
-        newHighScore: _bestRun > widget.initialBestStreak,
-      ),
+    final DateTime endedAt = DateTime.now();
+    final GameSession completedSession = GameSession(
+      id: '${widget.mode.statsKey.name}-${endedAt.microsecondsSinceEpoch}',
+      mode: widget.mode.statsKey,
+      startedAt: _sessionStartedAt ?? endedAt,
+      endedAt: endedAt,
+      score: _score,
+      bestStreak: _bestRun,
+      roundReached: _round,
+      endReason: endReason,
     );
-    widget.onNewBest(_bestRun);
-    _isSubmitting = false;
+
+    final bool restart =
+        await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => GameOverDialog(
+            mode: widget.mode,
+            score: _score,
+            bestRun: _bestRun,
+            roundReached: _round,
+            summary: summary,
+            newHighScore: _bestRun > widget.initialBestStreak,
+          ),
+        ) ??
+        false;
+
+    try {
+      await widget.onSessionCompleted(completedSession);
+    } finally {
+      _isSubmitting = false;
+    }
 
     if (!mounted) {
       return;
     }
-    if (restart ?? false) {
+    if (restart) {
       unawaited(_startNewGame());
     } else {
       Navigator.of(context).pop();
@@ -2036,34 +2181,31 @@ class _GameScreenState extends State<GameScreen> {
                                   ? null
                                   : _timerProgress,
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 24),
                             Expanded(
-                              child: Column(
-                                children: [
-                                  Expanded(
-                                    child: _GameBoard(
-                                      gridSize: widget.mode.gridSize,
-                                      highlightedTile: _highlightedTile,
-                                      pressedTile: _pressedTile,
-                                      errorTile: _errorTile,
-                                      accent: widget.mode.accent,
-                                      icon: widget.mode.icon,
-                                      enabled: _phase == GamePhase.input,
-                                      onTap: _handleTileTap,
-                                    ),
-                                  ),
-                                  if (widget.settings.trainingHintsEnabled) ...[
-                                    const SizedBox(height: 18),
-                                    _ModeHintCard(
-                                      mode: widget.mode,
-                                      phase: _phase,
-                                      round: _round,
-                                      tapWindow: _inputWindowForCurrentTurn(),
-                                    ),
-                                  ],
-                                ],
+                              child: Align(
+                                alignment: Alignment.topCenter,
+                                child: _GameBoard(
+                                  gridSize: widget.mode.gridSize,
+                                  highlightedTile: _highlightedTile,
+                                  pressedTile: _pressedTile,
+                                  errorTile: _errorTile,
+                                  accent: widget.mode.accent,
+                                  icon: widget.mode.icon,
+                                  enabled: _phase == GamePhase.input,
+                                  onTap: _handleTileTap,
+                                ),
                               ),
                             ),
+                            if (widget.settings.trainingHintsEnabled)
+                              const SizedBox(height: 20),
+                            if (widget.settings.trainingHintsEnabled)
+                              _ModeHintCard(
+                                mode: widget.mode,
+                                phase: _phase,
+                                round: _round,
+                                tapWindow: _inputWindowForCurrentTurn(),
+                              ),
                           ],
                         ),
                       ),
@@ -3549,4 +3691,35 @@ String _formatNumber(int value) {
     }
   }
   return buffer.toString();
+}
+
+String _formatAverage(double value) {
+  if (value == value.roundToDouble()) {
+    return _formatNumber(value.round());
+  }
+
+  return value.toStringAsFixed(1);
+}
+
+String _formatDate(DateTime? value) {
+  if (value == null) {
+    return 'Never';
+  }
+
+  const List<String> months = <String>[
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  final DateTime localValue = value.toLocal();
+  return '${months[localValue.month - 1]} ${localValue.day}, ${localValue.year}';
 }
