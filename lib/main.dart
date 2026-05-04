@@ -2224,9 +2224,11 @@ class _GameScreenState extends State<GameScreen> {
                                 ),
                               ),
                             ),
-                            if (widget.settings.trainingHintsEnabled)
+                            if (!isGameRunning &&
+                                widget.settings.trainingHintsEnabled)
                               const SizedBox(height: 20),
-                            if (widget.settings.trainingHintsEnabled)
+                            if (!isGameRunning &&
+                                widget.settings.trainingHintsEnabled)
                               _ModeHintCard(
                                 mode: widget.mode,
                                 phase: _phase,
@@ -2241,10 +2243,11 @@ class _GameScreenState extends State<GameScreen> {
                 ],
               ),
             ),
-            const Align(
-              alignment: Alignment.bottomCenter,
-              child: NeuralBottomNav(selected: NeuralNavItem.grid),
-            ),
+            if (!isGameRunning)
+              const Align(
+                alignment: Alignment.bottomCenter,
+                child: NeuralBottomNav(selected: NeuralNavItem.grid),
+              ),
           ],
         ),
       ),
@@ -2255,12 +2258,10 @@ class _GameScreenState extends State<GameScreen> {
 class NeuralTopBar extends StatelessWidget {
   const NeuralTopBar({
     super.key,
-    this.onBack,
     this.onAction,
     this.actionIcon = Icons.settings_rounded,
   });
 
-  final VoidCallback? onBack;
   final VoidCallback? onAction;
   final IconData actionIcon;
 
@@ -2271,17 +2272,7 @@ class NeuralTopBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Row(
         children: [
-          SizedBox(
-            width: 48,
-            child: onBack == null
-                ? null
-                : _RoundIconButton(
-                    icon: Icons.arrow_back_rounded,
-                    color: NeuralTheme.surfaceHighest,
-                    iconColor: NeuralTheme.textMuted,
-                    onTap: onBack,
-                  ),
-          ),
+          const SizedBox(width: 48),
           const SizedBox(width: 12),
           Icon(Icons.memory_rounded, color: NeuralTheme.primary),
           const SizedBox(width: 10),
