@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simon_says/main.dart';
+import 'package:simon_says/settings/neural_settings.dart';
 
 Future<void> _setPhoneSurface(WidgetTester tester) async {
   tester.view.physicalSize = const Size(1080, 2400);
@@ -22,7 +24,7 @@ Future<void> _returnToMenu(WidgetTester tester) async {
 }
 
 Future<void> _openFocusMode(WidgetTester tester) async {
-  await tester.tap(find.text('Calm Memory Run'));
+  await tester.tap(find.text('Easy mode'));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 700));
 }
@@ -58,18 +60,26 @@ Future<void> _toggleSetting(WidgetTester tester, String label) async {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
   testWidgets('home screen renders mode cards', (WidgetTester tester) async {
     await _setPhoneSurface(tester);
     await tester.pumpWidget(const NeuralRecallApp());
+    await tester.pumpAndSettle();
 
-    expect(find.text('Calm Memory Run'), findsOneWidget);
-    expect(find.text('Rapid Reflex Run'), findsOneWidget);
-    expect(find.text('V2.0.4'), findsOneWidget);
+    expect(find.text('Easy mode'), findsOneWidget);
+    expect(find.text('Hard Mode'), findsOneWidget);
+    expect(find.text('V1.0.0'), findsOneWidget);
   });
 
   testWidgets('changing theme updates app colors', (WidgetTester tester) async {
     await _setPhoneSurface(tester);
     await tester.pumpWidget(const NeuralRecallApp());
+    await tester.pumpAndSettle();
     await _openSettings(tester);
 
     await tester.scrollUntilVisible(
@@ -105,6 +115,7 @@ void main() {
   ) async {
     await _setPhoneSurface(tester);
     await tester.pumpWidget(const NeuralRecallApp());
+    await tester.pumpAndSettle();
     await _openSettings(tester);
 
     await _toggleSetting(tester, 'Training Hints');
@@ -121,6 +132,7 @@ void main() {
   ) async {
     await _setPhoneSurface(tester);
     await tester.pumpWidget(const NeuralRecallApp());
+    await tester.pumpAndSettle();
     await _openSettings(tester);
 
     await _toggleSetting(tester, 'Confirm Reset');
