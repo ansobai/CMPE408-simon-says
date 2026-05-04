@@ -200,7 +200,7 @@ class _FullscreenUiObserver with WidgetsBindingObserver {
 enum GameMode {
   focus(
     label: 'Focus Mode',
-    menuTitle: 'Calm Memory Run',
+    menuTitle: 'Easy mode',
     subtitle: '4 Tiles | Relaxed Speed',
     scoreLabel: 'FOCUS MODE',
     gridSize: 2,
@@ -214,7 +214,7 @@ enum GameMode {
   ),
   overdrive(
     label: 'Overdrive Mode',
-    menuTitle: 'Rapid Reflex Run',
+    menuTitle: 'Hard Mode',
     subtitle: '9 Tiles | Rapid Sequence',
     scoreLabel: 'OVERDRIVE',
     gridSize: 3,
