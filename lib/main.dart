@@ -1456,7 +1456,7 @@ class _StatsDashboard extends StatelessWidget {
                   width: cardWidth,
                   height: cardHeight,
                   child: _MetricCard(
-                    label: 'AVERAGE SCORE',
+                    label: 'SCORE MEAN',
                     value: _formatAverage(stats.averageScore),
                     accent: NeuralTheme.primarySoft,
                     icon: Icons.bar_chart_rounded,
@@ -1466,7 +1466,7 @@ class _StatsDashboard extends StatelessWidget {
                   width: cardWidth,
                   height: cardHeight,
                   child: _MetricCard(
-                    label: 'AVERAGE ROUNDS',
+                    label: 'ROUND MEAN',
                     value: _formatAverage(stats.averageRoundsReached),
                     accent: NeuralTheme.tertiary,
                     icon: Icons.route_rounded,

@@ -110,9 +110,9 @@ void main() {
     expect(find.text('1,200'), findsAtLeastNWidgets(2));
     expect(find.text('TOTAL SESSIONS'), findsOneWidget);
     expect(find.text('3'), findsOneWidget);
-    expect(find.text('AVERAGE SCORE'), findsOneWidget);
+    expect(find.text('SCORE MEAN'), findsOneWidget);
     expect(find.text('800'), findsOneWidget);
-    expect(find.text('AVERAGE ROUNDS'), findsOneWidget);
+    expect(find.text('ROUND MEAN'), findsOneWidget);
     expect(find.text('6'), findsOneWidget);
     expect(find.text('FOCUS BEST'), findsOneWidget);
     expect(find.text('1,200'), findsAtLeastNWidgets(2));
