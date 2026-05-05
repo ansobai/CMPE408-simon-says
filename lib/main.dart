@@ -412,13 +412,13 @@ class MainMenuScreen extends StatelessWidget {
     required this.playerStats,
     required this.settings,
     required this.onSessionCompleted,
-    required this.onSettingsChanged,
+    required this.onOpenSettings,
   });
 
   final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
   final Future<void> Function(GameSession session) onSessionCompleted;
-  final ValueChanged<NeuralSettings> onSettingsChanged;
+  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -444,7 +444,7 @@ class MainMenuScreen extends StatelessWidget {
                   bottom: false,
                   child: Column(
                     children: [
-                      NeuralTopBar(onAction: () => _openSettings(context)),
+                      NeuralTopBar(onAction: onOpenSettings),
                       Expanded(
                         child: Padding(
                           padding: EdgeInsets.fromLTRB(
@@ -486,14 +486,14 @@ class MainMenuScreen extends StatelessWidget {
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -510,40 +510,6 @@ class MainMenuScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _openSettings(BuildContext context) {
-    return Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => SettingsScreen(
-          playerStats: playerStats,
-          settings: settings,
-          onSettingsChanged: onSettingsChanged,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openStats(BuildContext context) {
-    return Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => StatsScreen(
-          playerStats: playerStats,
-          settings: settings,
-          onSettingsChanged: onSettingsChanged,
-        ),
-      ),
-    );
-  }
-
-  void _handleNavigation(BuildContext context, NeuralNavItem item) {
-    if (item == NeuralNavItem.stats) {
-      _openStats(context);
-      return;
-    }
-
-    if (item == NeuralNavItem.settings) {
-      _openSettings(context);
-    }
-  }
 }
 
 class StatsScreen extends StatelessWidget {
@@ -551,12 +517,10 @@ class StatsScreen extends StatelessWidget {
     super.key,
     required this.playerStats,
     required this.settings,
-    required this.onSettingsChanged,
   });
 
   final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
-  final ValueChanged<NeuralSettings> onSettingsChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -598,30 +562,8 @@ class StatsScreen extends StatelessWidget {
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: NeuralBottomNav(
-                    selected: NeuralNavItem.stats,
-                    onItemSelected: (item) {
-                      if (item == NeuralNavItem.grid) {
-                        Navigator.of(context).pop();
-                      }
-                      if (item == NeuralNavItem.settings) {
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute<void>(
-                            builder: (_) => SettingsScreen(
-                              playerStats: playerStats,
-                              settings: settings,
-                              onSettingsChanged: onSettingsChanged,
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -662,7 +604,7 @@ class SettingsScreen extends StatelessWidget {
                   bottom: false,
                   child: Column(
                     children: [
-                      NeuralTopBar(onBack: () => Navigator.of(context).pop()),
+                      const NeuralTopBar(),
                       Expanded(
                         child: ValueListenableBuilder<PlayerStats>(
                           valueListenable: playerStats,
@@ -693,30 +635,8 @@ class SettingsScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: NeuralBottomNav(
-                    selected: NeuralNavItem.settings,
-                    onItemSelected: (item) {
-                      if (item == NeuralNavItem.grid) {
-                        Navigator.of(context).pop();
-                      }
-                      if (item == NeuralNavItem.stats) {
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute<void>(
-                            builder: (_) => StatsScreen(
-                              playerStats: playerStats,
-                              settings: settings,
-                              onSettingsChanged: onSettingsChanged,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -1589,11 +1509,13 @@ class NeuralHomeShell extends StatefulWidget {
     required this.playerStats,
     required this.settings,
     required this.onSessionCompleted,
+    required this.onSettingsChanged,
   });
 
   final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
   final Future<void> Function(GameSession session) onSessionCompleted;
+  final ValueChanged<NeuralSettings> onSettingsChanged;
 
   @override
   State<NeuralHomeShell> createState() => _NeuralHomeShellState();
@@ -1659,6 +1581,7 @@ class _NeuralHomeShellState extends State<NeuralHomeShell> {
           SettingsScreen(
             playerStats: widget.playerStats,
             settings: widget.settings,
+            onSettingsChanged: widget.onSettingsChanged,
           ),
         ],
       ),

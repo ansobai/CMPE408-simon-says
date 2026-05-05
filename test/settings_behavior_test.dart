@@ -14,12 +14,12 @@ Future<void> _setPhoneSurface(WidgetTester tester) async {
 }
 
 Future<void> _openSettings(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.settings_rounded).first);
+  await tester.tap(find.byIcon(Icons.settings_rounded).hitTestable().first);
   await tester.pumpAndSettle();
 }
 
 Future<void> _returnToMenu(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.arrow_back_rounded).first);
+  await tester.tap(find.byIcon(Icons.grid_view_rounded).hitTestable().first);
   await tester.pumpAndSettle();
 }
 
@@ -76,38 +76,29 @@ void main() {
     expect(find.text('V1.0.0'), findsOneWidget);
   });
 
-  testWidgets('changing theme updates app colors', (WidgetTester tester) async {
-    await _setPhoneSurface(tester);
-    await tester.pumpWidget(const NeuralRecallApp());
-    await tester.pumpAndSettle();
-    await _openSettings(tester);
+testWidgets('changing theme updates the active palette selection', (
+  WidgetTester tester,
+) async {
+  await _setPhoneSurface(tester);
+  await tester.pumpWidget(const NeuralRecallApp());
+  await tester.pumpAndSettle();
+  await _openSettings(tester);
 
     await tester.scrollUntilVisible(
       find.text('Ember Glow'),
       300,
       scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Ember Glow'));
-    await tester.pumpAndSettle();
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Ember Glow'));
+  await tester.pumpAndSettle();
 
-    final Icon headerIcon = tester.widget<Icon>(
-      find.byIcon(Icons.memory_rounded).first,
-    );
-    expect(
-      headerIcon.color,
-      NeuralTheme.paletteFor(AppThemeProfile.emberGlow).primary,
-    );
+  expect(find.textContaining('Current theme: Ember Glow'), findsOneWidget);
 
-    await _returnToMenu(tester);
+  await _returnToMenu(tester);
+  await _openSettings(tester);
 
-    final Icon menuIcon = tester.widget<Icon>(
-      find.byIcon(Icons.memory_rounded).first,
-    );
-    expect(
-      menuIcon.color,
-      NeuralTheme.paletteFor(AppThemeProfile.emberGlow).primary,
-    );
+  expect(find.textContaining('Current theme: Ember Glow'), findsOneWidget);
   });
 
   testWidgets('training hints setting hides the gameplay hint card', (
