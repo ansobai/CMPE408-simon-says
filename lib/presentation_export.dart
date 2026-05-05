@@ -24,38 +24,42 @@ class _PresentationExportApp extends StatefulWidget {
 
 class _PresentationExportAppState extends State<_PresentationExportApp> {
   final GlobalKey _captureKey = GlobalKey();
-  final ValueNotifier<PlayerStats> _playerStats = ValueNotifier<PlayerStats>(
-    PlayerStats.fromSessions(<GameSession>[
-      GameSession(
-        id: 'session-1',
-        mode: GameModeKey.focus,
-        startedAt: DateTime.utc(2026, 5, 3, 10, 00),
-        endedAt: DateTime.utc(2026, 5, 3, 10, 02),
-        score: 1840,
-        bestStreak: 8,
-        roundReached: 8,
-        endReason: SessionEndReason.wrongTile,
-      ),
-      GameSession(
-        id: 'session-2',
-        mode: GameModeKey.overdrive,
-        startedAt: DateTime.utc(2026, 5, 4, 12, 15),
-        endedAt: DateTime.utc(2026, 5, 4, 12, 17),
-        score: 3260,
-        bestStreak: 11,
-        roundReached: 11,
-        endReason: SessionEndReason.timedOut,
-      ),
-    ]),
+  late final List<GameSession> _sampleSessions = <GameSession>[
+    GameSession(
+      id: 'session-1',
+      mode: GameModeKey.focus,
+      startedAt: DateTime.utc(2026, 5, 3, 10, 00),
+      endedAt: DateTime.utc(2026, 5, 3, 10, 02),
+      score: 1840,
+      bestStreak: 8,
+      roundReached: 8,
+      endReason: SessionEndReason.wrongTile,
+    ),
+    GameSession(
+      id: 'session-2',
+      mode: GameModeKey.overdrive,
+      startedAt: DateTime.utc(2026, 5, 4, 12, 15),
+      endedAt: DateTime.utc(2026, 5, 4, 12, 17),
+      score: 3260,
+      bestStreak: 11,
+      roundReached: 11,
+      endReason: SessionEndReason.timedOut,
+    ),
+  ];
+  late final ValueNotifier<PlayerStats> _playerStats = ValueNotifier<PlayerStats>(
+    PlayerStats.fromSessions(_sampleSessions),
   );
+  late final ValueNotifier<List<GameSession>> _sessions =
+      ValueNotifier<List<GameSession>>(<GameSession>[
+        ..._sampleSessions,
+      ]);
   final ValueNotifier<NeuralSettings> _settings = ValueNotifier<NeuralSettings>(
     const NeuralSettings(
       hapticsEnabled: true,
       reducedMotion: false,
       trainingHintsEnabled: true,
-      focusAssistEnabled: true,
       confirmResetEnabled: true,
-      appTheme: AppThemeStyle.neon,
+      appTheme: AppThemeProfile.neuralBlue,
     ),
   );
 
@@ -104,6 +108,7 @@ class _PresentationExportAppState extends State<_PresentationExportApp> {
   @override
   void dispose() {
     _playerStats.dispose();
+    _sessions.dispose();
     _settings.dispose();
     super.dispose();
   }
@@ -111,19 +116,17 @@ class _PresentationExportAppState extends State<_PresentationExportApp> {
   @override
   Widget build(BuildContext context) {
     final _CaptureStep step = _steps[_stepIndex];
-    final NeuralVisualTheme visualTheme = NeuralTheme.visualThemeFor(
-      AppThemeStyle.neon,
-    );
+    NeuralTheme.activate(_settings.value.appTheme);
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: visualTheme.backgroundBase,
+        scaffoldBackgroundColor: NeuralTheme.background,
         useMaterial3: true,
         colorScheme: ColorScheme.dark(
-          primary: visualTheme.primaryAccent,
-          secondary: visualTheme.secondaryAccent,
+          primary: NeuralTheme.primary,
+          secondary: NeuralTheme.secondary,
           surface: NeuralTheme.surface,
         ),
         textTheme: const TextTheme(
@@ -148,7 +151,7 @@ class _PresentationExportAppState extends State<_PresentationExportApp> {
         ),
       ),
       home: Scaffold(
-        backgroundColor: const Color(0xFF05070A),
+        backgroundColor: NeuralTheme.background,
         body: Center(
           child: RepaintBoundary(
             key: _captureKey,
@@ -174,15 +177,15 @@ class _PresentationExportAppState extends State<_PresentationExportApp> {
       playerStats: _playerStats,
       settings: _settings,
       onSessionCompleted: (_) async {},
-      onSettingsChanged: (_) {},
+      onOpenSettings: () {},
     );
   }
 
   Widget _buildStats() {
     return StatsScreen(
       playerStats: _playerStats,
+      sessions: _sessions,
       settings: _settings,
-      onSettingsChanged: (_) {},
     );
   }
 
@@ -197,11 +200,10 @@ class _PresentationExportAppState extends State<_PresentationExportApp> {
   Widget _buildFocusGame() {
     return const GameScreen(
       mode: GameMode.focus,
-      initialBestStreak: 11,
+      initialBestScore: 1840,
       settings: NeuralSettings(
         trainingHintsEnabled: true,
-        focusAssistEnabled: true,
-        appTheme: AppThemeStyle.neon,
+        appTheme: AppThemeProfile.neuralBlue,
       ),
       onSessionCompleted: _noopSessionSaver,
     );
@@ -210,11 +212,10 @@ class _PresentationExportAppState extends State<_PresentationExportApp> {
   Widget _buildOverdriveGame() {
     return const GameScreen(
       mode: GameMode.overdrive,
-      initialBestStreak: 11,
+      initialBestScore: 3260,
       settings: NeuralSettings(
         trainingHintsEnabled: true,
-        focusAssistEnabled: true,
-        appTheme: AppThemeStyle.neon,
+        appTheme: AppThemeProfile.neuralBlue,
       ),
       onSessionCompleted: _noopSessionSaver,
     );
