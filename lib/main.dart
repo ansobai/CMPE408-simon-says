@@ -36,6 +36,8 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   final ValueNotifier<PlayerStats> _playerStats = ValueNotifier<PlayerStats>(
     PlayerStats.empty(),
   );
+  final ValueNotifier<List<GameSession>> _sessions =
+      ValueNotifier<List<GameSession>>(<GameSession>[]);
   final ValueNotifier<NeuralSettings> _settings = ValueNotifier<NeuralSettings>(
     const NeuralSettings(),
   );
@@ -55,11 +57,14 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
 
   Future<void> _loadPersistedAppState() async {
     PlayerStats stats = PlayerStats.empty();
+    List<GameSession> sessions = <GameSession>[];
     NeuralSettings settings = const NeuralSettings();
 
     try {
+      sessions = await _statsRepository.loadSessions();
       stats = await _statsRepository.loadStats();
     } catch (_) {
+      sessions = <GameSession>[];
       stats = PlayerStats.empty();
     }
 
@@ -74,6 +79,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     }
 
     _playerStats.value = stats;
+    _sessions.value = List<GameSession>.unmodifiable(sessions);
     _settings.value = settings;
     setState(() {
       _isLoadingAppState = false;
@@ -82,11 +88,13 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
 
   Future<void> _saveCompletedSession(GameSession session) async {
     await _statsRepository.saveCompletedSession(session);
+    final List<GameSession> sessions = await _statsRepository.loadSessions();
     final PlayerStats stats = await _statsRepository.loadStats();
     if (!mounted) {
       return;
     }
 
+    _sessions.value = List<GameSession>.unmodifiable(sessions);
     _playerStats.value = stats;
   }
 
@@ -99,6 +107,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   void dispose() {
     WidgetsBinding.instance.removeObserver(_fullscreenObserver);
     _playerStats.dispose();
+    _sessions.dispose();
     _settings.dispose();
     super.dispose();
   }
@@ -116,6 +125,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
               ? const _StartupLoadingScreen()
               : NeuralHomeShell(
                   playerStats: _playerStats,
+                  sessions: _sessions,
                   settings: _settings,
                   onSessionCompleted: _saveCompletedSession,
                   onSettingsChanged: _updateSettings,
@@ -502,7 +512,8 @@ class MainMenuScreen extends StatelessWidget {
       MaterialPageRoute<void>(
         builder: (_) => GameScreen(
           mode: mode,
-          initialBestStreak: playerStats.value.bestStreak,
+          initialBestScore:
+              playerStats.value.bestScoreByMode[mode.statsKey] ?? 0,
           settings: settings.value,
           onSessionCompleted: onSessionCompleted,
         ),
@@ -516,10 +527,12 @@ class StatsScreen extends StatelessWidget {
   const StatsScreen({
     super.key,
     required this.playerStats,
+    required this.sessions,
     required this.settings,
   });
 
   final ValueNotifier<PlayerStats> playerStats;
+  final ValueNotifier<List<GameSession>> sessions;
   final ValueNotifier<NeuralSettings> settings;
 
   @override
@@ -556,7 +569,15 @@ class StatsScreen extends StatelessWidget {
                             child: ValueListenableBuilder<PlayerStats>(
                               valueListenable: playerStats,
                               builder: (context, stats, _) {
-                                return _StatsDashboard(stats: stats);
+                                return ValueListenableBuilder<List<GameSession>>(
+                                  valueListenable: sessions,
+                                  builder: (context, savedSessions, _) {
+                                    return _StatsDashboard(
+                                      stats: stats,
+                                      sessions: savedSessions,
+                                    );
+                                  },
+                                );
                               },
                             ),
                           ),
@@ -1334,13 +1355,33 @@ class _SettingsSliderCard extends StatelessWidget {
   }
 }
 
-class _StatsDashboard extends StatelessWidget {
-  const _StatsDashboard({required this.stats});
+class _StatsDashboard extends StatefulWidget {
+  const _StatsDashboard({
+    required this.stats,
+    required this.sessions,
+  });
 
   final PlayerStats stats;
+  final List<GameSession> sessions;
+
+  @override
+  State<_StatsDashboard> createState() => _StatsDashboardState();
+}
+
+class _StatsDashboardState extends State<_StatsDashboard> {
+  SessionViewFilter _selectedFilter = SessionViewFilter.all;
 
   @override
   Widget build(BuildContext context) {
+    final List<GameSession> leaderboardEntries = widget.sessions.leaderboard(
+      mode: _selectedFilter.mode,
+      limit: 5,
+    );
+    final List<GameSession> recentRuns = widget.sessions.recentRuns(
+      mode: _selectedFilter.mode,
+      limit: 6,
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1360,7 +1401,7 @@ class _StatsDashboard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
-        _BestStreakCard(bestStreak: stats.bestStreak),
+        _BestStreakCard(bestStreak: widget.stats.bestStreak),
         const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
@@ -1376,7 +1417,7 @@ class _StatsDashboard extends StatelessWidget {
                   height: cardHeight,
                   child: _MetricCard(
                     label: 'BEST SCORE',
-                    value: _formatNumber(stats.bestScore),
+                    value: _formatNumber(widget.stats.bestScore),
                     accent: NeuralTheme.secondary,
                     icon: Icons.emoji_events_rounded,
                   ),
@@ -1386,7 +1427,7 @@ class _StatsDashboard extends StatelessWidget {
                   height: cardHeight,
                   child: _MetricCard(
                     label: 'TOTAL SESSIONS',
-                    value: _formatNumber(stats.totalSessions),
+                    value: _formatNumber(widget.stats.totalSessions),
                     accent: NeuralTheme.primary,
                     icon: Icons.layers_rounded,
                   ),
@@ -1396,7 +1437,7 @@ class _StatsDashboard extends StatelessWidget {
                   height: cardHeight,
                   child: _MetricCard(
                     label: 'SCORE MEAN',
-                    value: _formatAverage(stats.averageScore),
+                    value: _formatAverage(widget.stats.averageScore),
                     accent: NeuralTheme.primarySoft,
                     icon: Icons.bar_chart_rounded,
                   ),
@@ -1406,7 +1447,7 @@ class _StatsDashboard extends StatelessWidget {
                   height: cardHeight,
                   child: _MetricCard(
                     label: 'ROUND MEAN',
-                    value: _formatAverage(stats.averageRoundsReached),
+                    value: _formatAverage(widget.stats.averageRoundsReached),
                     accent: NeuralTheme.tertiary,
                     icon: Icons.route_rounded,
                   ),
@@ -1417,7 +1458,7 @@ class _StatsDashboard extends StatelessWidget {
                   child: _MetricCard(
                     label: 'FOCUS BEST',
                     value: _formatNumber(
-                      stats.bestScoreByMode[GameModeKey.focus] ?? 0,
+                      widget.stats.bestScoreByMode[GameModeKey.focus] ?? 0,
                     ),
                     accent: NeuralTheme.primary,
                     icon: Icons.auto_awesome_motion_rounded,
@@ -1429,7 +1470,7 @@ class _StatsDashboard extends StatelessWidget {
                   child: _MetricCard(
                     label: 'OVERDRIVE BEST',
                     value: _formatNumber(
-                      stats.bestScoreByMode[GameModeKey.overdrive] ?? 0,
+                      widget.stats.bestScoreByMode[GameModeKey.overdrive] ?? 0,
                     ),
                     accent: NeuralTheme.secondarySoft,
                     icon: Icons.bolt_rounded,
@@ -1440,7 +1481,7 @@ class _StatsDashboard extends StatelessWidget {
                   height: cardHeight,
                   child: _MetricCard(
                     label: 'LAST PLAYED',
-                    value: _formatDate(stats.lastPlayedAt),
+                    value: _formatDate(widget.stats.lastPlayedAt),
                     accent: NeuralTheme.primarySoft,
                     icon: Icons.event_rounded,
                   ),
@@ -1449,7 +1490,552 @@ class _StatsDashboard extends StatelessWidget {
             );
           },
         ),
+        const SizedBox(height: 28),
+        const _StatsSectionHeader(
+          label: 'LOCAL LEADERBOARD',
+          subtitle:
+              'Every completed run is ranked locally so both game modes can be reviewed later.',
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: SessionViewFilter.values.map((SessionViewFilter filter) {
+            return _SessionFilterPill(
+              label: filter.label,
+              selected: _selectedFilter == filter,
+              onTap: () {
+                if (_selectedFilter == filter) {
+                  return;
+                }
+                setState(() {
+                  _selectedFilter = filter;
+                });
+              },
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 16),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 240),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          child: Column(
+            key: ValueKey<SessionViewFilter>(_selectedFilter),
+            children: [
+              _LeaderboardCard(
+                entries: leaderboardEntries,
+                filter: _selectedFilter,
+              ),
+              const SizedBox(height: 16),
+              _RecentRunsCard(
+                runs: recentRuns,
+                filter: _selectedFilter,
+              ),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+}
+
+class _StatsSectionHeader extends StatelessWidget {
+  const _StatsSectionHeader({
+    required this.label,
+    required this.subtitle,
+  });
+
+  final String label;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: NeuralTheme.textDim.withValues(alpha: 0.52),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          subtitle,
+          style: TextStyle(
+            color: NeuralTheme.textMuted,
+            fontSize: 14,
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SessionFilterPill extends StatelessWidget {
+  const _SessionFilterPill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? NeuralTheme.primary.withValues(alpha: 0.12)
+                : NeuralTheme.surface.withValues(alpha: 0.82),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected
+                  ? NeuralTheme.primary.withValues(alpha: 0.34)
+                  : NeuralTheme.outline.withValues(alpha: 0.22),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? NeuralTheme.primarySoft : NeuralTheme.textMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LeaderboardCard extends StatelessWidget {
+  const _LeaderboardCard({
+    required this.entries,
+    required this.filter,
+  });
+
+  final List<GameSession> entries;
+  final SessionViewFilter filter;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: NeuralTheme.surface.withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: NeuralTheme.secondary.withValues(alpha: 0.16)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _IconPlate(
+                icon: Icons.workspace_premium_rounded,
+                color: NeuralTheme.secondary,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Top saved runs',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: NeuralTheme.text,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Sorted by score, then by stronger and newer runs inside ${filter.label.toLowerCase()}.',
+                      style: TextStyle(
+                        color: NeuralTheme.textDim,
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          if (entries.isEmpty)
+            _DataPlaceholder(
+              icon: Icons.leaderboard_rounded,
+              title: 'No ranked runs yet',
+              message:
+                  'Finish a session in this mode and it will appear here automatically.',
+            )
+          else
+            Column(
+              children: List<Widget>.generate(entries.length, (int index) {
+                final GameSession session = entries[index];
+                return Padding(
+                  padding: EdgeInsets.only(bottom: index == entries.length - 1 ? 0 : 14),
+                  child: _LeaderboardEntryRow(
+                    rank: index + 1,
+                    session: session,
+                  ),
+                );
+              }),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LeaderboardEntryRow extends StatelessWidget {
+  const _LeaderboardEntryRow({
+    required this.rank,
+    required this.session,
+  });
+
+  final int rank;
+  final GameSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color accent = session.mode == GameModeKey.focus
+        ? NeuralTheme.primary
+        : NeuralTheme.secondarySoft;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: NeuralTheme.surfaceHighest.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accent.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              '$rank',
+              style: TextStyle(
+                color: accent,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      _formatModeLabel(session.mode),
+                      style: const TextStyle(
+                        color: NeuralTheme.text,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    _SessionBadge(
+                      label: _formatSessionEndReason(session.endReason),
+                      color: accent,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${_formatNumber(session.score)} points  •  Chain ${session.bestStreak}  •  Round ${session.roundReached}',
+                  style: TextStyle(
+                    color: NeuralTheme.textMuted,
+                    fontSize: 12,
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _formatDateTime(session.endedAt),
+                  style: TextStyle(
+                    color: NeuralTheme.textDim,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Text(
+            _formatNumber(session.score),
+            style: TextStyle(
+              color: accent,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecentRunsCard extends StatelessWidget {
+  const _RecentRunsCard({
+    required this.runs,
+    required this.filter,
+  });
+
+  final List<GameSession> runs;
+  final SessionViewFilter filter;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: NeuralTheme.surface.withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: NeuralTheme.primary.withValues(alpha: 0.16)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _IconPlate(icon: Icons.history_rounded, color: NeuralTheme.primary),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Recent sessions',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: NeuralTheme.text,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'The latest completed runs for ${filter.label.toLowerCase()} stay visible here for quick review.',
+                      style: TextStyle(
+                        color: NeuralTheme.textDim,
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          if (runs.isEmpty)
+            _DataPlaceholder(
+              icon: Icons.cloud_off_rounded,
+              title: 'No session history yet',
+              message:
+                  'This panel fills in after the first saved run, so there is always a visible no-data state.',
+            )
+          else
+            Column(
+              children: List<Widget>.generate(runs.length, (int index) {
+                final GameSession session = runs[index];
+                return Padding(
+                  padding: EdgeInsets.only(bottom: index == runs.length - 1 ? 0 : 12),
+                  child: _RecentRunRow(session: session),
+                );
+              }),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecentRunRow extends StatelessWidget {
+  const _RecentRunRow({required this.session});
+
+  final GameSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color accent = session.mode == GameModeKey.focus
+        ? NeuralTheme.primary
+        : NeuralTheme.secondarySoft;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: NeuralTheme.surfaceHighest.withValues(alpha: 0.34),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _IconPlate(
+            icon: session.mode == GameModeKey.focus
+                ? Icons.auto_awesome_motion_rounded
+                : Icons.bolt_rounded,
+            color: accent,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    Text(
+                      _formatModeLabel(session.mode),
+                      style: const TextStyle(
+                        color: NeuralTheme.text,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    _SessionBadge(
+                      label: _formatSessionEndReason(session.endReason),
+                      color: accent,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Score ${_formatNumber(session.score)}  •  Chain ${session.bestStreak}  •  Round ${session.roundReached}',
+                  style: TextStyle(
+                    color: NeuralTheme.textMuted,
+                    fontSize: 12,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            _formatDateTime(session.endedAt),
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: NeuralTheme.textDim,
+              fontSize: 11,
+              height: 1.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SessionBadge extends StatelessWidget {
+  const _SessionBadge({
+    required this.label,
+    required this.color,
+  });
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.4,
+        ),
+      ),
+    );
+  }
+}
+
+class _DataPlaceholder extends StatelessWidget {
+  const _DataPlaceholder({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: NeuralTheme.surfaceHighest.withValues(alpha: 0.28),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: NeuralTheme.outline.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _IconPlate(icon: icon, color: NeuralTheme.textMuted),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: NeuralTheme.text,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  style: TextStyle(
+                    color: NeuralTheme.textMuted,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1507,12 +2093,14 @@ class NeuralHomeShell extends StatefulWidget {
   const NeuralHomeShell({
     super.key,
     required this.playerStats,
+    required this.sessions,
     required this.settings,
     required this.onSessionCompleted,
     required this.onSettingsChanged,
   });
 
   final ValueNotifier<PlayerStats> playerStats;
+  final ValueNotifier<List<GameSession>> sessions;
   final ValueNotifier<NeuralSettings> settings;
   final Future<void> Function(GameSession session) onSessionCompleted;
   final ValueChanged<NeuralSettings> onSettingsChanged;
@@ -1576,6 +2164,7 @@ class _NeuralHomeShellState extends State<NeuralHomeShell> {
           ),
           StatsScreen(
             playerStats: widget.playerStats,
+            sessions: widget.sessions,
             settings: widget.settings,
           ),
           SettingsScreen(
@@ -1597,13 +2186,13 @@ class GameScreen extends StatefulWidget {
   const GameScreen({
     super.key,
     required this.mode,
-    required this.initialBestStreak,
+    required this.initialBestScore,
     required this.settings,
     required this.onSessionCompleted,
   });
 
   final GameMode mode;
-  final int initialBestStreak;
+  final int initialBestScore;
   final NeuralSettings settings;
   final Future<void> Function(GameSession session) onSessionCompleted;
 
@@ -1976,7 +2565,7 @@ class _GameScreenState extends State<GameScreen> {
             bestRun: _bestRun,
             roundReached: _round,
             summary: summary,
-            newHighScore: _bestRun > widget.initialBestStreak,
+            newHighScore: _score > widget.initialBestScore,
           ),
         ) ??
         false;
@@ -3712,4 +4301,30 @@ String _formatDate(DateTime? value) {
   ];
   final DateTime localValue = value.toLocal();
   return '${months[localValue.month - 1]} ${localValue.day}, ${localValue.year}';
+}
+
+String _formatDateTime(DateTime value) {
+  final DateTime localValue = value.toLocal();
+  final String minute = localValue.minute.toString().padLeft(2, '0');
+  final String meridiem = localValue.hour >= 12 ? 'PM' : 'AM';
+  final int hour = localValue.hour % 12 == 0 ? 12 : localValue.hour % 12;
+  return '${_formatDate(localValue)}  •  $hour:$minute $meridiem';
+}
+
+String _formatModeLabel(GameModeKey mode) {
+  switch (mode) {
+    case GameModeKey.focus:
+      return 'Easy mode';
+    case GameModeKey.overdrive:
+      return 'Hard mode';
+  }
+}
+
+String _formatSessionEndReason(SessionEndReason reason) {
+  switch (reason) {
+    case SessionEndReason.wrongTile:
+      return 'Wrong tile';
+    case SessionEndReason.timedOut:
+      return 'Timer expired';
+  }
 }
