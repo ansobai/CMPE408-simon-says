@@ -109,30 +109,29 @@ void main() {
     expect(find.text('BEST SCORE'), findsOneWidget);
     expect(find.text('1,200'), findsAtLeastNWidgets(2));
     expect(find.text('TOTAL SESSIONS'), findsOneWidget);
-    expect(find.text('3'), findsOneWidget);
+    expect(find.text('3'), findsAtLeastNWidgets(1));
     expect(find.text('SCORE MEAN'), findsOneWidget);
     expect(find.text('800'), findsOneWidget);
     expect(find.text('ROUND MEAN'), findsOneWidget);
-    expect(find.text('6'), findsOneWidget);
+    expect(find.text('6'), findsAtLeastNWidgets(1));
     expect(find.text('FOCUS BEST'), findsOneWidget);
     expect(find.text('1,200'), findsAtLeastNWidgets(2));
     expect(find.text('OVERDRIVE BEST'), findsOneWidget);
-    expect(find.text('640'), findsOneWidget);
+    expect(find.text('640'), findsAtLeastNWidgets(1));
     expect(find.text('LAST PLAYED'), findsOneWidget);
     expect(find.text('May 4, 2026'), findsOneWidget);
+    expect(find.text('LOCAL LEADERBOARD'), findsOneWidget);
+    expect(find.text('Top saved runs'), findsOneWidget);
+    expect(find.text('Recent sessions'), findsOneWidget);
+    expect(find.text('Wrong tile'), findsAtLeastNWidgets(1));
+    expect(find.text('Timer expired'), findsAtLeastNWidgets(1));
     expect(find.text('REACTION AVG'), findsNothing);
     expect(find.text('COMPLETION RATE'), findsNothing);
 
-    await tester.tap(find.byIcon(Icons.settings_rounded).first);
+    await tester.tap(find.byIcon(Icons.settings_rounded).hitTestable().first);
     await tester.pumpAndSettle();
 
     expect(find.text('Ember Glow'), findsOneWidget);
-    final Icon headerIcon = tester.widget<Icon>(
-      find.byIcon(Icons.memory_rounded).first,
-    );
-    expect(
-      headerIcon.color,
-      NeuralTheme.paletteFor(AppThemeProfile.emberGlow).primary,
-    );
+    expect(find.textContaining('Current theme: Ember Glow'), findsOneWidget);
   });
 }

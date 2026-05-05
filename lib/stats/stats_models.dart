@@ -24,6 +24,17 @@ enum SessionEndReason {
   }
 }
 
+enum SessionViewFilter {
+  all('All Runs', null),
+  focus('Focus', GameModeKey.focus),
+  overdrive('Overdrive', GameModeKey.overdrive);
+
+  const SessionViewFilter(this.label, this.mode);
+
+  final String label;
+  final GameModeKey? mode;
+}
+
 @immutable
 class GameSession {
   const GameSession({
@@ -213,5 +224,56 @@ class PlayerStats {
           ? null
           : lastPlayedAt ?? this.lastPlayedAt,
     );
+  }
+}
+
+extension GameSessionCollections on Iterable<GameSession> {
+  List<GameSession> leaderboard({
+    GameModeKey? mode,
+    int limit = 5,
+  }) {
+    // Rank by score first, then prefer stronger runs and newer attempts.
+    final List<GameSession> sortedSessions = _filterByMode(mode).toList()
+      ..sort((GameSession left, GameSession right) {
+        final int byScore = right.score.compareTo(left.score);
+        if (byScore != 0) {
+          return byScore;
+        }
+
+        final int byStreak = right.bestStreak.compareTo(left.bestStreak);
+        if (byStreak != 0) {
+          return byStreak;
+        }
+
+        final int byRound = right.roundReached.compareTo(left.roundReached);
+        if (byRound != 0) {
+          return byRound;
+        }
+
+        return right.endedAt.compareTo(left.endedAt);
+      });
+
+    return List<GameSession>.unmodifiable(sortedSessions.take(limit));
+  }
+
+  List<GameSession> recentRuns({
+    GameModeKey? mode,
+    int limit = 6,
+  }) {
+    final List<GameSession> sortedSessions = _filterByMode(mode).toList()
+      ..sort(
+        (GameSession left, GameSession right) =>
+            right.endedAt.compareTo(left.endedAt),
+      );
+
+    return List<GameSession>.unmodifiable(sortedSessions.take(limit));
+  }
+
+  Iterable<GameSession> _filterByMode(GameModeKey? mode) {
+    if (mode == null) {
+      return this;
+    }
+
+    return where((GameSession session) => session.mode == mode);
   }
 }
