@@ -49,16 +49,16 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
       stats = await _statsRepository.loadStats();
     } catch (_) {
       stats = PlayerStats.empty();
-    } finally {
-      if (!mounted) {
-        return;
-      }
-
-      _playerStats.value = stats;
-      setState(() {
-        _isLoadingStats = false;
-      });
     }
+
+    if (!mounted) {
+      return;
+    }
+
+    _playerStats.value = stats;
+    setState(() {
+      _isLoadingStats = false;
+    });
   }
 
   Future<void> _saveCompletedSession(GameSession session) async {
@@ -136,6 +136,8 @@ class AppThemePalette {
     required this.secondary,
     required this.secondarySoft,
     required this.tertiary,
+    required this.background,
+    required this.backgroundTop,
     required this.primaryGlow,
     required this.secondaryGlow,
     required this.backgroundBottom,
@@ -148,6 +150,8 @@ class AppThemePalette {
   final Color secondary;
   final Color secondarySoft;
   final Color tertiary;
+  final Color background;
+  final Color backgroundTop;
   final Color primaryGlow;
   final Color secondaryGlow;
   final Color backgroundBottom;
@@ -155,7 +159,6 @@ class AppThemePalette {
 }
 
 class NeuralTheme {
-  static const Color background = Color(0xFF131313);
   static const Color surface = Color(0xFF1C1B1B);
   static const Color surfaceHigh = Color(0xFF2A2A2A);
   static const Color surfaceHighest = Color(0xFF353534);
@@ -175,6 +178,8 @@ class NeuralTheme {
           secondary: Color(0xFF7C4DFF),
           secondarySoft: Color(0xFFCDBDFF),
           tertiary: Color(0xFFFEC931),
+          background: Color(0xFF131313),
+          backgroundTop: Color(0xFF101A1F),
           primaryGlow: Color(0x3300E5FF),
           secondaryGlow: Color(0x267C4DFF),
           backgroundBottom: Color(0xFF0E0E0E),
@@ -187,6 +192,8 @@ class NeuralTheme {
           secondary: Color(0xFFFFC857),
           secondarySoft: Color(0xFFFFE4A5),
           tertiary: Color(0xFF7EE0C5),
+          background: Color(0xFF15110F),
+          backgroundTop: Color(0xFF1A120F),
           primaryGlow: Color(0x33FF8A65),
           secondaryGlow: Color(0x29FFC857),
           backgroundBottom: Color(0xFF120E0D),
@@ -199,6 +206,8 @@ class NeuralTheme {
           secondary: Color(0xFF4FC3F7),
           secondarySoft: Color(0xFFCBEFFF),
           tertiary: Color(0xFFFFB86C),
+          background: Color(0xFF101413),
+          backgroundTop: Color(0xFF0E1715),
           primaryGlow: Color(0x305BF2C5),
           secondaryGlow: Color(0x264FC3F7),
           backgroundBottom: Color(0xFF0C1110),
@@ -223,6 +232,8 @@ class NeuralTheme {
   static Color get secondary => palette.secondary;
   static Color get secondarySoft => palette.secondarySoft;
   static Color get tertiary => palette.tertiary;
+  static Color get background => palette.background;
+  static Color get backgroundTop => palette.backgroundTop;
   static Color get primaryGlow => palette.primaryGlow;
   static Color get secondaryGlow => palette.secondaryGlow;
   static Color get backgroundBottom => palette.backgroundBottom;
@@ -489,68 +500,81 @@ class MainMenuScreen extends StatelessWidget {
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
     final double bottomNavHeight = 74 + math.max(12, bottomInset);
     return Scaffold(
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF131313), Color(0xFF0E0E0E)],
+      body: _SwipeNavigationRegion(
+        onSwipeLeft: () => _openStats(context),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                NeuralTheme.backgroundTop,
+                NeuralTheme.background,
+                NeuralTheme.backgroundBottom,
+              ],
+              stops: const [0, 0.52, 1],
+            ),
           ),
-        ),
-        child: Stack(
-          children: [
-            const _BackgroundEffects(),
-            SafeArea(
-              bottom: false,
-              child: Column(
-                children: [
-                  NeuralTopBar(onAction: () => _openSettings(context)),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(24, 8, 24, bottomNavHeight),
-                      child: _ScaleToFit(
-                        designWidth: _mainMenuDesignWidth,
-                        designHeight: _mainMenuDesignHeight,
-                        child: Column(
-                          children: [
-                            const _HeroLogo(),
-                            const SizedBox(height: 28),
-                            _ModeButton(
-                              mode: GameMode.focus,
-                              onTap: () => _openGame(context, GameMode.focus),
-                            ),
-                            const SizedBox(height: 16),
-                            _ModeButton(
-                              mode: GameMode.overdrive,
-                              onTap: () =>
-                                  _openGame(context, GameMode.overdrive),
-                            ),
-                            const Spacer(),
-                            Text(
-                              'V1.0.0',
-                              style: Theme.of(context).textTheme.labelSmall
-                                  ?.copyWith(
-                                    color: NeuralTheme.textDim.withValues(
-                                      alpha: 0.5,
+          child: Stack(
+            children: [
+              _BackgroundEffects(),
+              SafeArea(
+                bottom: false,
+                child: Column(
+                  children: [
+                    NeuralTopBar(onAction: () => _openSettings(context)),
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          24,
+                          8,
+                          24,
+                          bottomNavHeight,
+                        ),
+                        child: _ScaleToFit(
+                          designWidth: _mainMenuDesignWidth,
+                          designHeight: _mainMenuDesignHeight,
+                          child: Column(
+                            children: [
+                              _HeroLogo(),
+                              const SizedBox(height: 28),
+                              _ModeButton(
+                                mode: GameMode.focus,
+                                onTap: () => _openGame(context, GameMode.focus),
+                              ),
+                              const SizedBox(height: 16),
+                              _ModeButton(
+                                mode: GameMode.overdrive,
+                                onTap: () =>
+                                    _openGame(context, GameMode.overdrive),
+                              ),
+                              const Spacer(),
+                              Text(
+                                'V1.0.0',
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: NeuralTheme.textDim.withValues(
+                                        alpha: 0.5,
+                                      ),
                                     ),
-                                  ),
-                            ),
-                          ],
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: NeuralBottomNav(
-                selected: NeuralNavItem.grid,
-                onItemSelected: (item) => _handleNavigation(context, item),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: NeuralBottomNav(
+                  selected: NeuralNavItem.grid,
+                  onItemSelected: (item) => _handleNavigation(context, item),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -558,7 +582,7 @@ class MainMenuScreen extends StatelessWidget {
 
   Future<void> _openGame(BuildContext context, GameMode mode) {
     return Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      _NeuralPageRoute<void>(
         builder: (_) => GameScreen(
           mode: mode,
           initialBestStreak: playerStats.value.bestStreak,
@@ -571,7 +595,7 @@ class MainMenuScreen extends StatelessWidget {
 
   Future<void> _openSettings(BuildContext context) {
     return Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      _NeuralPageRoute<void>(
         builder: (_) =>
             SettingsScreen(playerStats: playerStats, settings: settings),
       ),
@@ -580,7 +604,7 @@ class MainMenuScreen extends StatelessWidget {
 
   Future<void> _openStats(BuildContext context) {
     return Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      _NeuralPageRoute<void>(
         builder: (_) =>
             StatsScreen(playerStats: playerStats, settings: settings),
       ),
@@ -618,64 +642,77 @@ class StatsScreen extends StatelessWidget {
       builder: (context, currentSettings, _) {
         NeuralTheme.activate(currentSettings.appTheme);
         return Scaffold(
-          body: DecoratedBox(
-            decoration: BoxDecoration(color: NeuralTheme.background),
-            child: Stack(
-              children: [
-                const _BackgroundEffects(),
-                SafeArea(
-                  bottom: false,
-                  child: Column(
-                    children: [
-                      NeuralTopBar(onBack: () => Navigator.of(context).pop()),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          padding: EdgeInsets.fromLTRB(
-                            24,
-                            8,
-                            24,
-                            bottomNavHeight + 18,
-                          ),
-                          child: Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                maxWidth: _statsScreenDesignWidth,
-                              ),
-                              child: ValueListenableBuilder<PlayerStats>(
-                                valueListenable: playerStats,
-                                builder: (context, stats, _) {
-                                  return _StatsDashboard(stats: stats);
-                                },
+          body: _SwipeNavigationRegion(
+            onSwipeRight: () => Navigator.of(context).maybePop(),
+            onSwipeLeft: () {
+              Navigator.of(context).pushReplacement(
+                _NeuralPageRoute<void>(
+                  builder: (_) => SettingsScreen(
+                    playerStats: playerStats,
+                    settings: settings,
+                  ),
+                ),
+              );
+            },
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: NeuralTheme.background),
+              child: Stack(
+                children: [
+                  _BackgroundEffects(),
+                  SafeArea(
+                    bottom: false,
+                    child: Column(
+                      children: [
+                        NeuralTopBar(),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: EdgeInsets.fromLTRB(
+                              24,
+                              8,
+                              24,
+                              bottomNavHeight + 18,
+                            ),
+                            child: Center(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: _statsScreenDesignWidth,
+                                ),
+                                child: ValueListenableBuilder<PlayerStats>(
+                                  valueListenable: playerStats,
+                                  builder: (context, stats, _) {
+                                    return _StatsDashboard(stats: stats);
+                                  },
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: NeuralBottomNav(
-                    selected: NeuralNavItem.stats,
-                    onItemSelected: (item) {
-                      if (item == NeuralNavItem.grid) {
-                        Navigator.of(context).pop();
-                      }
-                      if (item == NeuralNavItem.settings) {
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute<void>(
-                            builder: (_) => SettingsScreen(
-                              playerStats: playerStats,
-                              settings: settings,
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: NeuralBottomNav(
+                      selected: NeuralNavItem.stats,
+                      onItemSelected: (item) {
+                        if (item == NeuralNavItem.grid) {
+                          Navigator.of(context).pop();
+                        }
+                        if (item == NeuralNavItem.settings) {
+                          Navigator.of(context).pushReplacement(
+                            _NeuralPageRoute<void>(
+                              builder: (_) => SettingsScreen(
+                                playerStats: playerStats,
+                                settings: settings,
+                              ),
                             ),
-                          ),
-                        );
-                      }
-                    },
+                          );
+                        }
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -703,70 +740,80 @@ class SettingsScreen extends StatelessWidget {
       builder: (context, currentSettings, _) {
         NeuralTheme.activate(currentSettings.appTheme);
         return Scaffold(
-          body: DecoratedBox(
-            decoration: BoxDecoration(color: NeuralTheme.background),
-            child: Stack(
-              children: [
-                const _BackgroundEffects(),
-                SafeArea(
-                  bottom: false,
-                  child: Column(
-                    children: [
-                      NeuralTopBar(onBack: () => Navigator.of(context).pop()),
-                      Expanded(
-                        child: ValueListenableBuilder<PlayerStats>(
-                          valueListenable: playerStats,
-                          builder: (context, currentStats, child) {
-                            return SingleChildScrollView(
-                              padding: EdgeInsets.fromLTRB(
-                                24,
-                                8,
-                                24,
-                                bottomNavHeight + 18,
-                              ),
-                              child: Center(
-                                child: ConstrainedBox(
-                                  constraints: const BoxConstraints(
-                                    maxWidth: _statsScreenDesignWidth,
-                                  ),
-                                  child: _SettingsDashboard(
-                                    bestStreak: currentStats.bestStreak,
-                                    settings: currentSettings,
-                                    onSettingsChanged: (nextSettings) {
-                                      settings.value = nextSettings;
-                                    },
+          body: _SwipeNavigationRegion(
+            onSwipeRight: () {
+              Navigator.of(context).pushReplacement(
+                _NeuralPageRoute<void>(
+                  builder: (_) =>
+                      StatsScreen(playerStats: playerStats, settings: settings),
+                ),
+              );
+            },
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: NeuralTheme.background),
+              child: Stack(
+                children: [
+                  _BackgroundEffects(),
+                  SafeArea(
+                    bottom: false,
+                    child: Column(
+                      children: [
+                        NeuralTopBar(),
+                        Expanded(
+                          child: ValueListenableBuilder<PlayerStats>(
+                            valueListenable: playerStats,
+                            builder: (context, currentStats, child) {
+                              return SingleChildScrollView(
+                                padding: EdgeInsets.fromLTRB(
+                                  24,
+                                  8,
+                                  24,
+                                  bottomNavHeight + 18,
+                                ),
+                                child: Center(
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: _statsScreenDesignWidth,
+                                    ),
+                                    child: _SettingsDashboard(
+                                      bestStreak: currentStats.bestStreak,
+                                      settings: currentSettings,
+                                      onSettingsChanged: (nextSettings) {
+                                        settings.value = nextSettings;
+                                      },
+                                    ),
                                   ),
                                 ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: NeuralBottomNav(
-                    selected: NeuralNavItem.settings,
-                    onItemSelected: (item) {
-                      if (item == NeuralNavItem.grid) {
-                        Navigator.of(context).pop();
-                      }
-                      if (item == NeuralNavItem.stats) {
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute<void>(
-                            builder: (_) => StatsScreen(
-                              playerStats: playerStats,
-                              settings: settings,
-                            ),
+                              );
+                            },
                           ),
-                        );
-                      }
-                    },
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: NeuralBottomNav(
+                      selected: NeuralNavItem.settings,
+                      onItemSelected: (item) {
+                        if (item == NeuralNavItem.grid) {
+                          Navigator.of(context).pop();
+                        }
+                        if (item == NeuralNavItem.stats) {
+                          Navigator.of(context).pushReplacement(
+                            _NeuralPageRoute<void>(
+                              builder: (_) => StatsScreen(
+                                playerStats: playerStats,
+                                settings: settings,
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -1493,87 +1540,61 @@ class _StatsDashboard extends StatelessWidget {
         const SizedBox(height: 20),
         _BestStreakCard(bestStreak: stats.bestStreak),
         const SizedBox(height: 16),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final bool isTwoColumn = constraints.maxWidth >= 430;
-            final double cardWidth = isTwoColumn
-                ? (constraints.maxWidth - 16) / 2
-                : constraints.maxWidth;
-
-            return Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: [
-                SizedBox(
-                  width: cardWidth,
-                  child: _MetricCard(
-                    label: 'BEST SCORE',
-                    value: _formatNumber(stats.bestScore),
-                    accent: NeuralTheme.secondary,
-                    icon: Icons.emoji_events_rounded,
-                  ),
-                ),
-                SizedBox(
-                  width: cardWidth,
-                  child: _MetricCard(
-                    label: 'TOTAL SESSIONS',
-                    value: _formatNumber(stats.totalSessions),
-                    accent: NeuralTheme.primary,
-                    icon: Icons.layers_rounded,
-                  ),
-                ),
-                SizedBox(
-                  width: cardWidth,
-                  child: _MetricCard(
-                    label: 'AVERAGE SCORE',
-                    value: _formatAverage(stats.averageScore),
-                    accent: NeuralTheme.primarySoft,
-                    icon: Icons.bar_chart_rounded,
-                  ),
-                ),
-                SizedBox(
-                  width: cardWidth,
-                  child: _MetricCard(
-                    label: 'AVERAGE ROUNDS',
-                    value: _formatAverage(stats.averageRoundsReached),
-                    accent: NeuralTheme.tertiary,
-                    icon: Icons.route_rounded,
-                  ),
-                ),
-                SizedBox(
-                  width: cardWidth,
-                  child: _MetricCard(
-                    label: 'FOCUS BEST',
-                    value: _formatNumber(
-                      stats.bestScoreByMode[GameModeKey.focus] ?? 0,
-                    ),
-                    accent: NeuralTheme.primary,
-                    icon: Icons.auto_awesome_motion_rounded,
-                  ),
-                ),
-                SizedBox(
-                  width: cardWidth,
-                  child: _MetricCard(
-                    label: 'OVERDRIVE BEST',
-                    value: _formatNumber(
-                      stats.bestScoreByMode[GameModeKey.overdrive] ?? 0,
-                    ),
-                    accent: NeuralTheme.secondarySoft,
-                    icon: Icons.bolt_rounded,
-                  ),
-                ),
-                SizedBox(
-                  width: cardWidth,
-                  child: _MetricCard(
-                    label: 'LAST PLAYED',
-                    value: _formatDate(stats.lastPlayedAt),
-                    accent: NeuralTheme.primarySoft,
-                    icon: Icons.event_rounded,
-                  ),
-                ),
-              ],
-            );
-          },
+        GridView.count(
+          crossAxisCount: 2,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          childAspectRatio: 1,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          children: [
+            _MetricCard(
+              label: 'BEST SCORE',
+              value: _formatNumber(stats.bestScore),
+              accent: NeuralTheme.secondary,
+              icon: Icons.emoji_events_rounded,
+            ),
+            _MetricCard(
+              label: 'TOTAL SESSIONS',
+              value: _formatNumber(stats.totalSessions),
+              accent: NeuralTheme.primary,
+              icon: Icons.layers_rounded,
+            ),
+            _MetricCard(
+              label: 'AVERAGE SCORE',
+              value: _formatAverage(stats.averageScore),
+              accent: NeuralTheme.primarySoft,
+              icon: Icons.bar_chart_rounded,
+            ),
+            _MetricCard(
+              label: 'AVERAGE ROUNDS',
+              value: _formatAverage(stats.averageRoundsReached),
+              accent: NeuralTheme.tertiary,
+              icon: Icons.route_rounded,
+            ),
+            _MetricCard(
+              label: 'FOCUS BEST',
+              value: _formatNumber(
+                stats.bestScoreByMode[GameModeKey.focus] ?? 0,
+              ),
+              accent: NeuralTheme.primary,
+              icon: Icons.auto_awesome_motion_rounded,
+            ),
+            _MetricCard(
+              label: 'OVERDRIVE BEST',
+              value: _formatNumber(
+                stats.bestScoreByMode[GameModeKey.overdrive] ?? 0,
+              ),
+              accent: NeuralTheme.secondarySoft,
+              icon: Icons.bolt_rounded,
+            ),
+            _MetricCard(
+              label: 'LAST PLAYED',
+              value: _formatDate(stats.lastPlayedAt),
+              accent: NeuralTheme.primarySoft,
+              icon: Icons.event_rounded,
+            ),
+          ],
         ),
       ],
     );
@@ -1595,36 +1616,54 @@ class _MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: NeuralTheme.surface.withValues(alpha: 0.86),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: accent.withValues(alpha: 0.16)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _IconPlate(icon: icon, color: accent),
-          const SizedBox(height: 16),
-          Text(
-            label,
-            style: Theme.of(
-              context,
-            ).textTheme.labelSmall?.copyWith(color: NeuralTheme.textMuted),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool compact = constraints.maxWidth < 170;
+
+        return Container(
+          padding: EdgeInsets.all(compact ? 16 : 22),
+          decoration: BoxDecoration(
+            color: NeuralTheme.surface.withValues(alpha: 0.86),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: accent.withValues(alpha: 0.16)),
           ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(
-              color: accent,
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -1,
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _IconPlate(icon: icon, color: accent),
+              SizedBox(height: compact ? 12 : 16),
+              Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.labelSmall?.copyWith(color: NeuralTheme.textMuted),
+              ),
+              SizedBox(height: compact ? 6 : 8),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.bottomLeft,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.bottomLeft,
+                    child: Text(
+                      value,
+                      maxLines: 1,
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: compact ? 22 : 26,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -1,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -2133,92 +2172,101 @@ class _GameScreenState extends State<GameScreen> {
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
     final double bottomNavHeight = _navBarBaseHeight + bottomInset;
     return Scaffold(
-      body: DecoratedBox(
-        decoration: BoxDecoration(color: NeuralTheme.background),
-        child: Stack(
-          children: [
-            const _BackgroundEffects(),
-            SafeArea(
-              bottom: false,
-              child: Column(
-                children: [
-                  NeuralTopBar(onBack: () => Navigator.of(context).pop()),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(24, 8, 24, bottomNavHeight),
-                      child: _ScaleToFit(
-                        designWidth: _gameScreenDesignWidth,
-                        designHeight: _gameScreenDesignHeight,
-                        child: Column(
-                          children: [
-                            if (isFocus)
-                              _FocusDashboard(
-                                score: _score,
-                                streak: _streak,
+      body: _SwipeNavigationRegion(
+        edgeOnly: true,
+        onSwipeRight: () => Navigator.of(context).maybePop(),
+        child: DecoratedBox(
+          decoration: BoxDecoration(color: NeuralTheme.background),
+          child: Stack(
+            children: [
+              _BackgroundEffects(),
+              SafeArea(
+                bottom: false,
+                child: Column(
+                  children: [
+                    NeuralTopBar(),
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          24,
+                          8,
+                          24,
+                          bottomNavHeight,
+                        ),
+                        child: _ScaleToFit(
+                          designWidth: _gameScreenDesignWidth,
+                          designHeight: _gameScreenDesignHeight,
+                          child: Column(
+                            children: [
+                              if (isFocus)
+                                _FocusDashboard(
+                                  score: _score,
+                                  streak: _streak,
+                                  round: _round,
+                                  phaseLabel: _phaseLabel,
+                                  progress: _sequenceProgress,
+                                  onReset: () => unawaited(_resetGame()),
+                                )
+                              else
+                                _OverdriveDashboard(
+                                  score: _score,
+                                  streak: _streak,
+                                  round: _round,
+                                  phaseLabel: _phaseLabel,
+                                  progress: _sequenceProgress,
+                                  timerProgress: _timerProgress,
+                                  onReset: () => unawaited(_resetGame()),
+                                ),
+                              const SizedBox(height: 20),
+                              _ModeProgress(
+                                mode: widget.mode,
                                 round: _round,
                                 phaseLabel: _phaseLabel,
                                 progress: _sequenceProgress,
-                                onReset: () => unawaited(_resetGame()),
-                              )
-                            else
-                              _OverdriveDashboard(
-                                score: _score,
-                                streak: _streak,
-                                round: _round,
-                                phaseLabel: _phaseLabel,
-                                progress: _sequenceProgress,
-                                timerProgress: _timerProgress,
-                                onReset: () => unawaited(_resetGame()),
+                                timerProgress:
+                                    _inputWindowForCurrentTurn() == null
+                                    ? null
+                                    : _timerProgress,
                               ),
-                            const SizedBox(height: 20),
-                            _ModeProgress(
-                              mode: widget.mode,
-                              round: _round,
-                              phaseLabel: _phaseLabel,
-                              progress: _sequenceProgress,
-                              timerProgress:
-                                  _inputWindowForCurrentTurn() == null
-                                  ? null
-                                  : _timerProgress,
-                            ),
-                            const SizedBox(height: 24),
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.topCenter,
-                                child: _GameBoard(
-                                  gridSize: widget.mode.gridSize,
-                                  highlightedTile: _highlightedTile,
-                                  pressedTile: _pressedTile,
-                                  errorTile: _errorTile,
-                                  accent: widget.mode.accent,
-                                  icon: widget.mode.icon,
-                                  enabled: _phase == GamePhase.input,
-                                  onTap: _handleTileTap,
+                              const SizedBox(height: 24),
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.topCenter,
+                                  child: _GameBoard(
+                                    gridSize: widget.mode.gridSize,
+                                    highlightedTile: _highlightedTile,
+                                    pressedTile: _pressedTile,
+                                    errorTile: _errorTile,
+                                    accent: widget.mode.accent,
+                                    icon: widget.mode.icon,
+                                    enabled: _phase == GamePhase.input,
+                                    onTap: _handleTileTap,
+                                  ),
                                 ),
                               ),
-                            ),
-                            if (widget.settings.trainingHintsEnabled)
-                              const SizedBox(height: 20),
-                            if (widget.settings.trainingHintsEnabled)
-                              _ModeHintCard(
-                                mode: widget.mode,
-                                phase: _phase,
-                                round: _round,
-                                tapWindow: _inputWindowForCurrentTurn(),
-                              ),
-                          ],
+                              if (widget.settings.trainingHintsEnabled)
+                                const SizedBox(height: 20),
+                              if (widget.settings.trainingHintsEnabled)
+                                _ModeHintCard(
+                                  mode: widget.mode,
+                                  phase: _phase,
+                                  round: _round,
+                                  tapWindow: _inputWindowForCurrentTurn(),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const Align(
-              alignment: Alignment.bottomCenter,
-              child: NeuralBottomNav(selected: NeuralNavItem.grid),
-            ),
-          ],
+              const Align(
+                alignment: Alignment.bottomCenter,
+                child: NeuralBottomNav(selected: NeuralNavItem.grid),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2228,12 +2276,10 @@ class _GameScreenState extends State<GameScreen> {
 class NeuralTopBar extends StatelessWidget {
   const NeuralTopBar({
     super.key,
-    this.onBack,
     this.onAction,
     this.actionIcon = Icons.settings_rounded,
   });
 
-  final VoidCallback? onBack;
   final VoidCallback? onAction;
   final IconData actionIcon;
 
@@ -2244,17 +2290,7 @@ class NeuralTopBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Row(
         children: [
-          SizedBox(
-            width: 48,
-            child: onBack == null
-                ? null
-                : _RoundIconButton(
-                    icon: Icons.arrow_back_rounded,
-                    color: NeuralTheme.surfaceHighest,
-                    iconColor: NeuralTheme.textMuted,
-                    onTap: onBack,
-                  ),
-          ),
+          const SizedBox(width: 48),
           const SizedBox(width: 12),
           Icon(Icons.memory_rounded, color: NeuralTheme.primary),
           const SizedBox(width: 10),
@@ -2282,6 +2318,115 @@ class NeuralTopBar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _NeuralPageRoute<T> extends PageRouteBuilder<T> {
+  _NeuralPageRoute({required WidgetBuilder builder})
+    : super(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            builder(context),
+        transitionDuration: const Duration(milliseconds: 260),
+        reverseTransitionDuration: const Duration(milliseconds: 220),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final Animation<Offset> slideAnimation =
+              Tween<Offset>(
+                begin: const Offset(0.08, 0),
+                end: Offset.zero,
+              ).animate(
+                CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutCubic,
+                  reverseCurve: Curves.easeInCubic,
+                ),
+              );
+
+          final Animation<double> fadeAnimation =
+              Tween<double>(begin: 0, end: 1).animate(
+                CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOut,
+                  reverseCurve: Curves.easeIn,
+                ),
+              );
+
+          return FadeTransition(
+            opacity: fadeAnimation,
+            child: SlideTransition(position: slideAnimation, child: child),
+          );
+        },
+      );
+}
+
+class _SwipeNavigationRegion extends StatefulWidget {
+  const _SwipeNavigationRegion({
+    required this.child,
+    this.onSwipeLeft,
+    this.onSwipeRight,
+    this.edgeOnly = false,
+  });
+
+  final Widget child;
+  final VoidCallback? onSwipeLeft;
+  final VoidCallback? onSwipeRight;
+  final bool edgeOnly;
+
+  @override
+  State<_SwipeNavigationRegion> createState() => _SwipeNavigationRegionState();
+}
+
+class _SwipeNavigationRegionState extends State<_SwipeNavigationRegion> {
+  static const double _edgeActivationWidth = 28;
+  static const double _distanceThreshold = 72;
+  static const double _velocityThreshold = 500;
+
+  double _dragExtent = 0;
+  bool _trackingSwipe = false;
+
+  void _handleDragStart(DragStartDetails details) {
+    _dragExtent = 0;
+    _trackingSwipe =
+        !widget.edgeOnly || details.globalPosition.dx <= _edgeActivationWidth;
+  }
+
+  void _handleDragUpdate(DragUpdateDetails details) {
+    if (!_trackingSwipe) {
+      return;
+    }
+
+    _dragExtent += details.primaryDelta ?? 0;
+  }
+
+  void _handleDragEnd(DragEndDetails details) {
+    if (!_trackingSwipe) {
+      return;
+    }
+
+    final double velocity = details.primaryVelocity ?? 0;
+    final bool passedDistance = _dragExtent.abs() >= _distanceThreshold;
+    final bool passedVelocity = velocity.abs() >= _velocityThreshold;
+
+    if (passedDistance || passedVelocity) {
+      if (_dragExtent > 0 || velocity > 0) {
+        widget.onSwipeRight?.call();
+      } else if (_dragExtent < 0 || velocity < 0) {
+        widget.onSwipeLeft?.call();
+      }
+    }
+
+    _dragExtent = 0;
+    _trackingSwipe = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragStart: _handleDragStart,
+      onHorizontalDragUpdate: _handleDragUpdate,
+      onHorizontalDragEnd: _handleDragEnd,
+      child: widget.child,
     );
   }
 }
@@ -3079,6 +3224,7 @@ class _ModeHintCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 132),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: NeuralTheme.surface.withValues(alpha: 0.6),
@@ -3521,26 +3667,81 @@ class _NavIcon extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
         onTap: onTap,
-        child: Ink(
-          width: 54,
+        child: SizedBox(
+          width: 62,
           height: 54,
-          decoration: BoxDecoration(
-            color: selected
-                ? NeuralTheme.primary.withValues(alpha: 0.10)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: NeuralTheme.primaryGlow.withValues(alpha: 0.45),
-                      blurRadius: 18,
+          child: Stack(
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
+            children: [
+              if (selected)
+                Positioned(
+                  bottom: 7,
+                  child: Container(
+                    width: 42,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          NeuralTheme.primary.withValues(alpha: 0.26),
+                          NeuralTheme.primaryGlow.withValues(alpha: 0.06),
+                        ],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: NeuralTheme.primaryGlow.withValues(
+                            alpha: 0.48,
+                          ),
+                          blurRadius: 24,
+                          spreadRadius: 2,
+                        ),
+                        BoxShadow(
+                          color: NeuralTheme.secondaryGlow.withValues(
+                            alpha: 0.18,
+                          ),
+                          blurRadius: 34,
+                          spreadRadius: -3,
+                        ),
+                      ],
                     ),
-                  ]
-                : null,
-          ),
-          child: Icon(
-            icon,
-            color: selected ? NeuralTheme.primary : const Color(0xFF5D5D5D),
+                  ),
+                ),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? NeuralTheme.surfaceHigh.withValues(alpha: 0.92)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: selected
+                        ? NeuralTheme.primary.withValues(alpha: 0.24)
+                        : Colors.transparent,
+                  ),
+                  boxShadow: selected
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.22),
+                            blurRadius: 10,
+                            offset: const Offset(0, 6),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Icon(
+                  icon,
+                  color: selected
+                      ? NeuralTheme.primarySoft
+                      : const Color(0xFF5D5D5D),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -3606,6 +3807,34 @@ class _BackgroundEffects extends StatelessWidget {
     return IgnorePointer(
       child: Stack(
         children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.topRight,
+                  radius: 0.72,
+                  colors: [
+                    NeuralTheme.primary.withValues(alpha: 0.16),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.bottomLeft,
+                  radius: 0.78,
+                  colors: [
+                    NeuralTheme.secondary.withValues(alpha: 0.14),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
           Positioned(
             top: -120,
             right: -80,
