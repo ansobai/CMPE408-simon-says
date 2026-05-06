@@ -228,10 +228,7 @@ class PlayerStats {
 }
 
 extension GameSessionCollections on Iterable<GameSession> {
-  List<GameSession> leaderboard({
-    GameModeKey? mode,
-    int limit = 5,
-  }) {
+  List<GameSession> leaderboard({GameModeKey? mode, int limit = 5}) {
     // Rank by score first, then prefer stronger runs and newer attempts.
     final List<GameSession> sortedSessions = _filterByMode(mode).toList()
       ..sort((GameSession left, GameSession right) {
@@ -256,10 +253,7 @@ extension GameSessionCollections on Iterable<GameSession> {
     return List<GameSession>.unmodifiable(sortedSessions.take(limit));
   }
 
-  List<GameSession> recentRuns({
-    GameModeKey? mode,
-    int limit = 6,
-  }) {
+  List<GameSession> recentRuns({GameModeKey? mode, int limit = 6}) {
     final List<GameSession> sortedSessions = _filterByMode(mode).toList()
       ..sort(
         (GameSession left, GameSession right) =>

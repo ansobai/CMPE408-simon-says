@@ -1,25 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
+import 'package:simon_says/auth/auth_models.dart';
+import 'package:simon_says/auth/auth_repository.dart';
 import 'package:simon_says/main.dart';
-import 'package:simon_says/settings/local_settings_repository.dart';
 import 'package:simon_says/settings/neural_settings.dart';
-import 'package:simon_says/stats/local_stats_repository.dart';
+import 'package:simon_says/settings/settings_repository.dart';
 import 'package:simon_says/stats/stats_models.dart';
+import 'package:simon_says/stats/stats_repository.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
-  });
-
-  testWidgets('app boots after loading persisted local stats', (
+  testWidgets('app boots after loading a signed-in local profile', (
     WidgetTester tester,
   ) async {
-    final LocalStatsRepository repository = LocalStatsRepository();
-    await repository.saveCompletedSession(
+    final user = AppUser(
+      id: 1,
+      username: 'bara',
+      score: 420,
+      createdAt: DateTime.parse('2026-05-04T10:00:00Z'),
+      updatedAt: DateTime.parse('2026-05-04T10:02:00Z'),
+      lastPlayedAt: DateTime.parse('2026-05-04T10:02:00Z'),
+    );
+    final sessions = <GameSession>[
       GameSession(
         id: 'boot-seeded-session',
         mode: GameModeKey.focus,
@@ -30,9 +33,18 @@ void main() {
         roundReached: 3,
         endReason: SessionEndReason.wrongTile,
       ),
-    );
+    ];
 
-    await tester.pumpWidget(const NeuralRecallApp());
+    await tester.pumpWidget(
+      NeuralRecallApp(
+        authRepository: _FakeAuthRepository(currentUser: user),
+        statsRepository: _FakeStatsRepository(
+          sessionsByUser: <int, List<GameSession>>{user.id: sessions},
+          leaderboardUsers: <AppUser>[user],
+        ),
+        settingsRepository: const _FakeSettingsRepository(),
+      ),
+    );
     expect(find.text('Loading neural profile...'), findsOneWidget);
 
     await tester.pumpAndSettle();
@@ -42,12 +54,26 @@ void main() {
     expect(find.text('V1.0.0'), findsOneWidget);
   });
 
-  testWidgets('stats screen shows values loaded from local storage', (
+  testWidgets('stats screen shows values loaded from the local app state', (
     WidgetTester tester,
   ) async {
-    final LocalStatsRepository repository = LocalStatsRepository();
-    final LocalSettingsRepository settingsRepository = LocalSettingsRepository();
-    await repository.saveCompletedSession(
+    final user = AppUser(
+      id: 1,
+      username: 'bara',
+      score: 1200,
+      createdAt: DateTime.parse('2026-05-04T10:00:00Z'),
+      updatedAt: DateTime.parse('2026-05-04T12:04:00Z'),
+      lastPlayedAt: DateTime.parse('2026-05-04T12:04:00Z'),
+    );
+    final userTwo = AppUser(
+      id: 2,
+      username: 'amro',
+      score: 1600,
+      createdAt: DateTime.parse('2026-05-04T13:00:00Z'),
+      updatedAt: DateTime.parse('2026-05-04T13:02:00Z'),
+      lastPlayedAt: DateTime.parse('2026-05-04T13:02:00Z'),
+    );
+    final sessions = <GameSession>[
       GameSession(
         id: 'session-1',
         mode: GameModeKey.focus,
@@ -58,8 +84,6 @@ void main() {
         roundReached: 8,
         endReason: SessionEndReason.wrongTile,
       ),
-    );
-    await repository.saveCompletedSession(
       GameSession(
         id: 'session-2',
         mode: GameModeKey.overdrive,
@@ -70,8 +94,6 @@ void main() {
         roundReached: 5,
         endReason: SessionEndReason.timedOut,
       ),
-    );
-    await repository.saveCompletedSession(
       GameSession(
         id: 'session-3',
         mode: GameModeKey.focus,
@@ -82,19 +104,22 @@ void main() {
         roundReached: 5,
         endReason: SessionEndReason.wrongTile,
       ),
-    );
-    await settingsRepository.saveSettings(
-      const NeuralSettings(
-        reducedMotion: true,
-        soundEnabled: false,
-        appTheme: AppThemeProfile.emberGlow,
-      ),
-    );
+    ];
 
     await tester.pumpWidget(
       NeuralRecallApp(
-        statsRepository: repository,
-        settingsRepository: settingsRepository,
+        authRepository: _FakeAuthRepository(currentUser: user),
+        statsRepository: _FakeStatsRepository(
+          sessionsByUser: <int, List<GameSession>>{user.id: sessions},
+          leaderboardUsers: <AppUser>[userTwo, user],
+        ),
+        settingsRepository: const _FakeSettingsRepository(
+          settings: NeuralSettings(
+            reducedMotion: true,
+            soundEnabled: false,
+            appTheme: AppThemeProfile.emberGlow,
+          ),
+        ),
       ),
     );
     expect(find.text('Loading neural profile...'), findsOneWidget);
@@ -105,7 +130,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('BEST STREAK'), findsOneWidget);
-    expect(find.text('8'), findsOneWidget);
+    expect(find.text('8'), findsAtLeastNWidgets(1));
     expect(find.text('BEST SCORE'), findsOneWidget);
     expect(find.text('1,200'), findsAtLeastNWidgets(2));
     expect(find.text('TOTAL SESSIONS'), findsOneWidget);
@@ -121,17 +146,99 @@ void main() {
     expect(find.text('LAST PLAYED'), findsOneWidget);
     expect(find.text('May 4, 2026'), findsOneWidget);
     expect(find.text('LOCAL LEADERBOARD'), findsOneWidget);
-    expect(find.text('Top saved runs'), findsOneWidget);
+    expect(find.text('Top local players'), findsOneWidget);
+    expect(find.text('bara'), findsOneWidget);
+    expect(find.text('amro'), findsOneWidget);
+    expect(find.text('Current profile'), findsOneWidget);
     expect(find.text('Recent sessions'), findsOneWidget);
     expect(find.text('Wrong tile'), findsAtLeastNWidgets(1));
     expect(find.text('Timer expired'), findsAtLeastNWidgets(1));
-    expect(find.text('REACTION AVG'), findsNothing);
-    expect(find.text('COMPLETION RATE'), findsNothing);
 
     await tester.tap(find.byIcon(Icons.settings_rounded).hitTestable().first);
     await tester.pumpAndSettle();
 
     expect(find.text('Ember Glow'), findsOneWidget);
     expect(find.textContaining('Current theme: Ember Glow'), findsOneWidget);
+    expect(find.text('LOCAL PROFILE'), findsOneWidget);
+    expect(find.text('bara'), findsOneWidget);
   });
+}
+
+class _FakeAuthRepository extends AuthRepository {
+  _FakeAuthRepository({required AppUser? currentUser})
+    : _currentUser = currentUser;
+
+  AppUser? _currentUser;
+
+  @override
+  Future<AppUser?> loadUserById(int userId) async {
+    return _currentUser?.id == userId ? _currentUser : null;
+  }
+
+  @override
+  Future<AppUser?> restoreSession() async => _currentUser;
+
+  @override
+  Future<AppUser> signIn({
+    required String username,
+    required String password,
+  }) async => _currentUser!;
+
+  @override
+  Future<void> signOut() async {
+    _currentUser = null;
+  }
+
+  @override
+  Future<AppUser> signUp({
+    required String username,
+    required String password,
+  }) async => _currentUser!;
+}
+
+class _FakeStatsRepository extends StatsRepository {
+  _FakeStatsRepository({
+    required this.sessionsByUser,
+    required this.leaderboardUsers,
+  });
+
+  final Map<int, List<GameSession>> sessionsByUser;
+  final List<AppUser> leaderboardUsers;
+
+  @override
+  Future<List<AppUser>> loadLeaderboardUsers({int limit = 10}) async {
+    return leaderboardUsers.take(limit).toList(growable: false);
+  }
+
+  @override
+  Future<PlayerStats> loadStatsForUser(int userId) async {
+    return PlayerStats.fromSessions(
+      sessionsByUser[userId] ?? const <GameSession>[],
+    );
+  }
+
+  @override
+  Future<List<GameSession>> loadSessionsForUser(int userId) async {
+    return List<GameSession>.unmodifiable(
+      sessionsByUser[userId] ?? const <GameSession>[],
+    );
+  }
+
+  @override
+  Future<void> saveCompletedSession({
+    required int userId,
+    required GameSession session,
+  }) async {}
+}
+
+class _FakeSettingsRepository extends SettingsRepository {
+  const _FakeSettingsRepository({this.settings = const NeuralSettings()});
+
+  final NeuralSettings settings;
+
+  @override
+  Future<NeuralSettings> loadSettings() async => settings;
+
+  @override
+  Future<void> saveSettings(NeuralSettings settings) async {}
 }

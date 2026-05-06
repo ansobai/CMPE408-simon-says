@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:simon_says/auth/auth_models.dart';
+import 'package:simon_says/auth/auth_repository.dart';
 import 'package:simon_says/main.dart';
 import 'package:simon_says/settings/neural_settings.dart';
 import 'package:simon_says/settings/settings_repository.dart';
@@ -20,22 +21,24 @@ Future<void> _setPhoneSurface(WidgetTester tester) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
-  });
-
   testWidgets('stats screen shows an explicit no-data state', (
     WidgetTester tester,
   ) async {
     await _setPhoneSurface(tester);
-    await tester.pumpWidget(const NeuralRecallApp());
+    await tester.pumpWidget(
+      NeuralRecallApp(
+        authRepository: _SignedInAuthRepository(),
+        statsRepository: const _InMemoryStatsRepository(),
+        settingsRepository: const _InMemorySettingsRepository(),
+      ),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.stacked_bar_chart_rounded));
     await tester.pumpAndSettle();
 
     expect(find.text('No sessions have been saved yet'), findsOneWidget);
-    expect(find.text('No ranked runs yet'), findsOneWidget);
+    expect(find.text('No local profiles yet'), findsOneWidget);
     expect(find.text('No session history yet'), findsOneWidget);
   });
 
@@ -45,15 +48,18 @@ void main() {
     await _setPhoneSurface(tester);
     await tester.pumpWidget(
       NeuralRecallApp(
+        authRepository: _SignedInAuthRepository(),
         statsRepository: const _ThrowingStatsRepository(),
         settingsRepository: const _InMemorySettingsRepository(),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Saved sessions could not be loaded'), findsOneWidget);
+    expect(find.text('Saved account data could not be loaded'), findsOneWidget);
     expect(
-      find.textContaining('stats, leaderboard, and recent run history'),
+      find.textContaining(
+        'local account, stats, leaderboard, and recent run history',
+      ),
       findsOneWidget,
     );
   });
@@ -64,6 +70,7 @@ void main() {
     await _setPhoneSurface(tester);
     await tester.pumpWidget(
       NeuralRecallApp(
+        authRepository: _SignedInAuthRepository(),
         statsRepository: const _InMemoryStatsRepository(),
         settingsRepository: const _ThrowingSettingsRepository(),
       ),
@@ -92,34 +99,87 @@ void main() {
   });
 }
 
+class _SignedInAuthRepository extends AuthRepository {
+  _SignedInAuthRepository();
+
+  final AppUser _user = AppUser(
+    id: 1,
+    username: 'bara',
+    score: 0,
+    createdAt: DateTime.parse('2026-05-04T10:00:00Z'),
+    updatedAt: DateTime.parse('2026-05-04T10:00:00Z'),
+  );
+
+  @override
+  Future<AppUser?> loadUserById(int userId) async {
+    return userId == _user.id ? _user : null;
+  }
+
+  @override
+  Future<AppUser?> restoreSession() async => _user;
+
+  @override
+  Future<AppUser> signIn({
+    required String username,
+    required String password,
+  }) async => _user;
+
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  Future<AppUser> signUp({
+    required String username,
+    required String password,
+  }) async => _user;
+}
+
 class _InMemoryStatsRepository extends StatsRepository {
   const _InMemoryStatsRepository();
 
   @override
-  Future<PlayerStats> loadStats() async => PlayerStats.empty();
+  Future<List<AppUser>> loadLeaderboardUsers({int limit = 10}) async {
+    return <AppUser>[];
+  }
 
   @override
-  Future<List<GameSession>> loadSessions() async => <GameSession>[];
+  Future<PlayerStats> loadStatsForUser(int userId) async => PlayerStats.empty();
 
   @override
-  Future<void> saveCompletedSession(GameSession session) async {}
+  Future<List<GameSession>> loadSessionsForUser(int userId) async {
+    return <GameSession>[];
+  }
+
+  @override
+  Future<void> saveCompletedSession({
+    required int userId,
+    required GameSession session,
+  }) async {}
 }
 
 class _ThrowingStatsRepository extends StatsRepository {
   const _ThrowingStatsRepository();
 
   @override
-  Future<PlayerStats> loadStats() {
+  Future<List<AppUser>> loadLeaderboardUsers({int limit = 10}) {
+    throw const FormatException('corrupt leaderboard');
+  }
+
+  @override
+  Future<PlayerStats> loadStatsForUser(int userId) {
     throw const FormatException('corrupt stats');
   }
 
   @override
-  Future<List<GameSession>> loadSessions() {
+  Future<List<GameSession>> loadSessionsForUser(int userId) {
     throw const FormatException('corrupt sessions');
   }
 
   @override
-  Future<void> saveCompletedSession(GameSession session) async {}
+  Future<void> saveCompletedSession({
+    required int userId,
+    required GameSession session,
+  }) async {}
 }
 
 class _InMemorySettingsRepository extends SettingsRepository {

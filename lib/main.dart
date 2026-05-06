@@ -4,6 +4,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'auth/auth_models.dart';
+import 'auth/auth_repository.dart';
+import 'auth/local_auth_repository.dart';
 import 'neural_sound_controller.dart';
 import 'settings/local_settings_repository.dart';
 import 'settings/neural_settings.dart';
@@ -21,10 +24,12 @@ Future<void> main() async {
 class NeuralRecallApp extends StatefulWidget {
   const NeuralRecallApp({
     super.key,
+    this.authRepository,
     this.statsRepository,
     this.settingsRepository,
   });
 
+  final AuthRepository? authRepository;
   final StatsRepository? statsRepository;
   final SettingsRepository? settingsRepository;
 
@@ -33,17 +38,21 @@ class NeuralRecallApp extends StatefulWidget {
 }
 
 class _NeuralRecallAppState extends State<NeuralRecallApp> {
+  final ValueNotifier<AppUser?> _currentUser = ValueNotifier<AppUser?>(null);
   final ValueNotifier<PlayerStats> _playerStats = ValueNotifier<PlayerStats>(
     PlayerStats.empty(),
   );
   final ValueNotifier<List<GameSession>> _sessions =
       ValueNotifier<List<GameSession>>(<GameSession>[]);
+  final ValueNotifier<List<AppUser>> _leaderboardUsers =
+      ValueNotifier<List<AppUser>>(<AppUser>[]);
   final ValueNotifier<_AppNotice?> _appNotice = ValueNotifier<_AppNotice?>(
     null,
   );
   final ValueNotifier<NeuralSettings> _settings = ValueNotifier<NeuralSettings>(
     const NeuralSettings(),
   );
+  late final AuthRepository _authRepository;
   late final StatsRepository _statsRepository;
   late final SettingsRepository _settingsRepository;
   bool _isLoadingAppState = true;
@@ -51,6 +60,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   @override
   void initState() {
     super.initState();
+    _authRepository = widget.authRepository ?? LocalAuthRepository();
     _statsRepository = widget.statsRepository ?? LocalStatsRepository();
     _settingsRepository =
         widget.settingsRepository ?? LocalSettingsRepository();
@@ -59,20 +69,29 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   }
 
   Future<void> _loadPersistedAppState() async {
+    AppUser? currentUser;
     PlayerStats stats = PlayerStats.empty();
     List<GameSession> sessions = <GameSession>[];
+    List<AppUser> leaderboardUsers = <AppUser>[];
     NeuralSettings settings = const NeuralSettings();
     bool recoveredStatsData = false;
     bool recoveredSettings = false;
+    bool recoveredAuthState = false;
 
     try {
-      sessions = await _statsRepository.loadSessions();
-      stats = await _statsRepository.loadStats();
+      currentUser = await _authRepository.restoreSession();
+      leaderboardUsers = await _statsRepository.loadLeaderboardUsers();
+      if (currentUser != null) {
+        sessions = await _statsRepository.loadSessionsForUser(currentUser.id);
+        stats = await _statsRepository.loadStatsForUser(currentUser.id);
+      }
     } catch (_) {
-      // Corrupt local data should not block the app from starting.
+      currentUser = null;
       sessions = <GameSession>[];
       stats = PlayerStats.empty();
+      leaderboardUsers = <AppUser>[];
       recoveredStatsData = true;
+      recoveredAuthState = true;
     }
 
     try {
@@ -86,15 +105,17 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
       return;
     }
 
+    _currentUser.value = currentUser;
     _playerStats.value = stats;
     _sessions.value = List<GameSession>.unmodifiable(sessions);
+    _leaderboardUsers.value = List<AppUser>.unmodifiable(leaderboardUsers);
     _settings.value = settings;
-    if (recoveredStatsData && recoveredSettings) {
+    if (recoveredAuthState && recoveredSettings) {
       _showNotice(
         const _AppNotice(
           title: 'Saved app data was reset for this launch',
           message:
-              'We could not read the stored sessions or settings, so the app recovered with defaults.',
+              'We could not read the stored account, sessions, or settings, so the app recovered with defaults.',
           icon: Icons.storage_rounded,
           tone: _AppNoticeTone.warning,
         ),
@@ -102,9 +123,9 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     } else if (recoveredStatsData) {
       _showNotice(
         const _AppNotice(
-          title: 'Saved sessions could not be loaded',
+          title: 'Saved account data could not be loaded',
           message:
-              'The stats, leaderboard, and recent run history were reset safely for this launch.',
+              'The local account, stats, leaderboard, and recent run history were reset safely for this launch.',
           icon: Icons.history_toggle_off_rounded,
           tone: _AppNoticeTone.warning,
         ),
@@ -126,16 +147,20 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   }
 
   Future<void> _saveCompletedSession(GameSession session) async {
+    final AppUser? currentUser = _currentUser.value;
+    if (currentUser == null) {
+      return;
+    }
+
     try {
-      await _statsRepository.saveCompletedSession(session);
-      final List<GameSession> sessions = await _statsRepository.loadSessions();
-      final PlayerStats stats = await _statsRepository.loadStats();
+      await _statsRepository.saveCompletedSession(
+        userId: currentUser.id,
+        session: session,
+      );
+      await _reloadSignedInData(currentUser.id);
       if (!mounted) {
         return;
       }
-
-      _sessions.value = List<GameSession>.unmodifiable(sessions);
-      _playerStats.value = stats;
     } catch (_) {
       if (!mounted) {
         return;
@@ -151,6 +176,23 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
         ),
       );
     }
+  }
+
+  Future<void> _reloadSignedInData(int userId) async {
+    final AppUser? refreshedUser = await _authRepository.loadUserById(userId);
+    final List<GameSession> sessions = await _statsRepository
+        .loadSessionsForUser(userId);
+    final PlayerStats stats = await _statsRepository.loadStatsForUser(userId);
+    final List<AppUser> leaderboardUsers = await _statsRepository
+        .loadLeaderboardUsers();
+    if (!mounted) {
+      return;
+    }
+
+    _currentUser.value = refreshedUser;
+    _sessions.value = List<GameSession>.unmodifiable(sessions);
+    _playerStats.value = stats;
+    _leaderboardUsers.value = List<AppUser>.unmodifiable(leaderboardUsers);
   }
 
   void _updateSettings(NeuralSettings nextSettings) {
@@ -187,11 +229,64 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     _appNotice.value = null;
   }
 
+  Future<void> _handleSignedIn(AppUser user) async {
+    if (mounted) {
+      setState(() {
+        _isLoadingAppState = true;
+      });
+    }
+    try {
+      await _reloadSignedInData(user.id);
+    } catch (_) {
+      if (mounted) {
+        _showNotice(
+          const _AppNotice(
+            title: 'Account data could not be loaded',
+            message:
+                'The sign-in worked, but the local sessions and leaderboard could not be opened yet.',
+            icon: Icons.lock_open_rounded,
+            tone: _AppNoticeTone.warning,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingAppState = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _signOut() async {
+    await _authRepository.signOut();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _currentUser.value = null;
+      _playerStats.value = PlayerStats.empty();
+      _sessions.value = const <GameSession>[];
+      _leaderboardUsers.value = const <AppUser>[];
+      _showNotice(
+        const _AppNotice(
+          title: 'Signed out locally',
+          message:
+              'Your device profile is closed. Sign in again to keep saving runs.',
+          icon: Icons.logout_rounded,
+        ),
+      );
+    });
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(_fullscreenObserver);
+    _currentUser.dispose();
     _playerStats.dispose();
     _sessions.dispose();
+    _leaderboardUsers.dispose();
     _appNotice.dispose();
     _settings.dispose();
     super.dispose();
@@ -208,14 +303,53 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
           theme: NeuralTheme.materialTheme,
           home: _isLoadingAppState
               ? const _StartupLoadingScreen()
+              : _currentUser.value == null
+              ? Stack(
+                  children: [
+                    _LocalAuthScreen(
+                      authRepository: _authRepository,
+                      onAuthenticated: _handleSignedIn,
+                    ),
+                    SafeArea(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+                          child: ValueListenableBuilder<_AppNotice?>(
+                            valueListenable: _appNotice,
+                            builder: (context, notice, _) {
+                              return AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 240),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeInCubic,
+                                child: notice == null
+                                    ? const SizedBox.shrink()
+                                    : _AppNoticeBanner(
+                                        key: ValueKey<String>(
+                                          '${notice.title}:${notice.message}',
+                                        ),
+                                        notice: notice,
+                                        onDismiss: _clearNotice,
+                                      ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
               : _NeuralHomeShell(
+                  currentUser: _currentUser,
                   playerStats: _playerStats,
                   sessions: _sessions,
+                  leaderboardUsers: _leaderboardUsers,
                   appNotice: _appNotice,
                   settings: _settings,
                   onSessionCompleted: _saveCompletedSession,
                   onDismissNotice: _clearNotice,
                   onSettingsChanged: _updateSettings,
+                  onSignOut: _signOut,
                 ),
         );
       },
@@ -241,6 +375,344 @@ class _StartupLoadingScreen extends StatelessWidget {
               style: TextStyle(color: NeuralTheme.textMuted),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+enum _AuthMode { signIn, signUp }
+
+class _LocalAuthScreen extends StatefulWidget {
+  const _LocalAuthScreen({
+    required this.authRepository,
+    required this.onAuthenticated,
+  });
+
+  final AuthRepository authRepository;
+  final Future<void> Function(AppUser user) onAuthenticated;
+
+  @override
+  State<_LocalAuthScreen> createState() => _LocalAuthScreenState();
+}
+
+class _LocalAuthScreenState extends State<_LocalAuthScreen> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  _AuthMode _mode = _AuthMode.signIn;
+  bool _isSubmitting = false;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final AppUser user = switch (_mode) {
+        _AuthMode.signIn => await widget.authRepository.signIn(
+          username: _usernameController.text,
+          password: _passwordController.text,
+        ),
+        _AuthMode.signUp => await widget.authRepository.signUp(
+          username: _usernameController.text,
+          password: _passwordController.text,
+        ),
+      };
+      if (!mounted) {
+        return;
+      }
+      await widget.onAuthenticated(user);
+    } on AuthFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorMessage = error.message;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: NeuralTheme.background,
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [NeuralTheme.background, NeuralTheme.backgroundBottom],
+          ),
+        ),
+        child: Stack(
+          children: [
+            const _BackgroundEffects(),
+            SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 460),
+                    child: Container(
+                      padding: const EdgeInsets.all(26),
+                      decoration: BoxDecoration(
+                        color: NeuralTheme.surface.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(
+                          color: NeuralTheme.primary.withValues(alpha: 0.18),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: NeuralTheme.primaryGlow.withValues(
+                              alpha: 0.28,
+                            ),
+                            blurRadius: 32,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'LOCAL ACCESS',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: NeuralTheme.textDim.withValues(
+                                      alpha: 0.72,
+                                    ),
+                                  ),
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Sign in or create a local player profile',
+                              style: TextStyle(
+                                color: NeuralTheme.text,
+                                fontSize: 28,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -1.0,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            const Text(
+                              'Usernames, password hashes, and leaderboard scores are stored in SQLite on this device.',
+                              style: TextStyle(
+                                color: NeuralTheme.textMuted,
+                                fontSize: 14,
+                                height: 1.5,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _AuthModeButton(
+                                    label: 'SIGN IN',
+                                    selected: _mode == _AuthMode.signIn,
+                                    onTap: () {
+                                      setState(() {
+                                        _mode = _AuthMode.signIn;
+                                        _errorMessage = null;
+                                      });
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _AuthModeButton(
+                                    label: 'SIGN UP',
+                                    selected: _mode == _AuthMode.signUp,
+                                    onTap: () {
+                                      setState(() {
+                                        _mode = _AuthMode.signUp;
+                                        _errorMessage = null;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                            TextFormField(
+                              controller: _usernameController,
+                              enabled: !_isSubmitting,
+                              textInputAction: TextInputAction.next,
+                              decoration: _authInputDecoration(
+                                label: 'Username',
+                                icon: Icons.person_outline_rounded,
+                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().length < 3) {
+                                  return 'Use at least 3 characters.';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _passwordController,
+                              enabled: !_isSubmitting,
+                              obscureText: true,
+                              onFieldSubmitted: (_) => _submit(),
+                              decoration: _authInputDecoration(
+                                label: 'Password',
+                                icon: Icons.lock_outline_rounded,
+                              ),
+                              validator: (value) {
+                                if (value == null || value.length < 4) {
+                                  return 'Use at least 4 characters.';
+                                }
+                                return null;
+                              },
+                            ),
+                            if (_errorMessage != null) ...[
+                              const SizedBox(height: 16),
+                              Text(
+                                _errorMessage!,
+                                style: const TextStyle(
+                                  color: NeuralTheme.error,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 22),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton(
+                                onPressed: _isSubmitting ? null : _submit,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: NeuralTheme.primary,
+                                  foregroundColor: NeuralTheme.onAccent,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 18,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
+                                child: _isSubmitting
+                                    ? const SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.2,
+                                        ),
+                                      )
+                                    : Text(
+                                        _mode == _AuthMode.signIn
+                                            ? 'ENTER PROFILE'
+                                            : 'CREATE PROFILE',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+InputDecoration _authInputDecoration({
+  required String label,
+  required IconData icon,
+}) {
+  return InputDecoration(
+    labelText: label,
+    prefixIcon: Icon(icon),
+    filled: true,
+    fillColor: NeuralTheme.surfaceHighest.withValues(alpha: 0.42),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(18),
+      borderSide: BorderSide(color: NeuralTheme.outline.withValues(alpha: 0.2)),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(18),
+      borderSide: BorderSide(color: NeuralTheme.outline.withValues(alpha: 0.2)),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(18),
+      borderSide: BorderSide(
+        color: NeuralTheme.primary.withValues(alpha: 0.45),
+      ),
+    ),
+  );
+}
+
+class _AuthModeButton extends StatelessWidget {
+  const _AuthModeButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: selected
+              ? NeuralTheme.primary.withValues(alpha: 0.12)
+              : NeuralTheme.surfaceHighest.withValues(alpha: 0.38),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: selected
+                ? NeuralTheme.primary.withValues(alpha: 0.34)
+                : NeuralTheme.outline.withValues(alpha: 0.22),
+          ),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: selected ? NeuralTheme.primarySoft : NeuralTheme.textMuted,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.5,
+          ),
         ),
       ),
     );
@@ -506,12 +978,14 @@ extension on GameMode {
 class MainMenuScreen extends StatelessWidget {
   const MainMenuScreen({
     super.key,
+    required this.currentUser,
     required this.playerStats,
     required this.settings,
     required this.onSessionCompleted,
     required this.onOpenSettings,
   });
 
+  final ValueNotifier<AppUser?> currentUser;
   final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
   final Future<void> Function(GameSession session) onSessionCompleted;
@@ -556,6 +1030,17 @@ class MainMenuScreen extends StatelessWidget {
                             child: Column(
                               children: [
                                 const _HeroLogo(),
+                                const SizedBox(height: 16),
+                                ValueListenableBuilder<AppUser?>(
+                                  valueListenable: currentUser,
+                                  builder: (context, user, _) {
+                                    if (user == null) {
+                                      return const SizedBox.shrink();
+                                    }
+
+                                    return _SignedInProfilePill(user: user);
+                                  },
+                                ),
                                 const SizedBox(height: 28),
                                 _ModeButton(
                                   mode: GameMode.focus,
@@ -607,19 +1092,60 @@ class MainMenuScreen extends StatelessWidget {
       ),
     );
   }
+}
 
+class _SignedInProfilePill extends StatelessWidget {
+  const _SignedInProfilePill({required this.user});
+
+  final AppUser user;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: NeuralTheme.surface.withValues(alpha: 0.84),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: NeuralTheme.primary.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.verified_user_rounded,
+            color: NeuralTheme.primary,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Text(
+            'SIGNED IN AS ${user.username.toUpperCase()}',
+            style: const TextStyle(
+              color: NeuralTheme.text,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class StatsScreen extends StatelessWidget {
   const StatsScreen({
     super.key,
+    required this.currentUser,
     required this.playerStats,
     required this.sessions,
+    required this.leaderboardUsers,
     required this.settings,
   });
 
+  final ValueNotifier<AppUser?> currentUser;
   final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<List<GameSession>> sessions;
+  final ValueNotifier<List<AppUser>> leaderboardUsers;
   final ValueNotifier<NeuralSettings> settings;
 
   @override
@@ -656,12 +1182,23 @@ class StatsScreen extends StatelessWidget {
                             child: ValueListenableBuilder<PlayerStats>(
                               valueListenable: playerStats,
                               builder: (context, stats, _) {
-                                return ValueListenableBuilder<List<GameSession>>(
+                                return ValueListenableBuilder<
+                                  List<GameSession>
+                                >(
                                   valueListenable: sessions,
                                   builder: (context, savedSessions, _) {
-                                    return _StatsDashboard(
-                                      stats: stats,
-                                      sessions: savedSessions,
+                                    return ValueListenableBuilder<
+                                      List<AppUser>
+                                    >(
+                                      valueListenable: leaderboardUsers,
+                                      builder: (context, rankedUsers, _) {
+                                        return _StatsDashboard(
+                                          currentUser: currentUser.value,
+                                          stats: stats,
+                                          sessions: savedSessions,
+                                          leaderboardUsers: rankedUsers,
+                                        );
+                                      },
                                     );
                                   },
                                 );
@@ -685,14 +1222,18 @@ class StatsScreen extends StatelessWidget {
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({
     super.key,
+    required this.currentUser,
     required this.playerStats,
     required this.settings,
     required this.onSettingsChanged,
+    required this.onSignOut,
   });
 
+  final ValueNotifier<AppUser?> currentUser;
   final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<NeuralSettings> settings;
   final ValueChanged<NeuralSettings> onSettingsChanged;
+  final Future<void> Function() onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -730,9 +1271,11 @@ class SettingsScreen extends StatelessWidget {
                                     maxWidth: _statsScreenDesignWidth,
                                   ),
                                   child: _SettingsDashboard(
+                                    currentUser: currentUser.value,
                                     bestStreak: currentStats.bestStreak,
                                     settings: currentSettings,
                                     onSettingsChanged: onSettingsChanged,
+                                    onSignOut: onSignOut,
                                   ),
                                 ),
                               ),
@@ -754,14 +1297,18 @@ class SettingsScreen extends StatelessWidget {
 
 class _SettingsDashboard extends StatelessWidget {
   const _SettingsDashboard({
+    required this.currentUser,
     required this.bestStreak,
     required this.settings,
     required this.onSettingsChanged,
+    required this.onSignOut,
   });
 
+  final AppUser? currentUser;
   final int bestStreak;
   final NeuralSettings settings;
   final ValueChanged<NeuralSettings> onSettingsChanged;
+  final Future<void> Function() onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -776,6 +1323,8 @@ class _SettingsDashboard extends StatelessWidget {
         ),
         const SizedBox(height: 18),
         _SettingsHeroCard(bestStreak: bestStreak, settings: settings),
+        const SizedBox(height: 22),
+        _LocalProfileCard(currentUser: currentUser, onSignOut: onSignOut),
         const SizedBox(height: 22),
         const _SettingsSectionTitle(
           label: 'APPEARANCE',
@@ -1050,6 +1599,98 @@ class _SettingsHeroCard extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocalProfileCard extends StatelessWidget {
+  const _LocalProfileCard({required this.currentUser, required this.onSignOut});
+
+  final AppUser? currentUser;
+  final Future<void> Function() onSignOut;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: NeuralTheme.surface.withValues(alpha: 0.84),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: NeuralTheme.secondary.withValues(alpha: 0.16),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _IconPlate(
+                icon: Icons.person_rounded,
+                color: NeuralTheme.secondary,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'LOCAL PROFILE',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: NeuralTheme.textDim.withValues(alpha: 0.72),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      currentUser?.username ?? 'No active profile',
+                      style: const TextStyle(
+                        color: NeuralTheme.text,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            currentUser == null
+                ? 'Sign in to save runs against a named account on this device.'
+                : 'Best saved score ${_formatNumber(currentUser!.score)}. Sign out here if you want to switch to another local user.',
+            style: const TextStyle(
+              color: NeuralTheme.textMuted,
+              fontSize: 14,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: currentUser == null ? null : onSignOut,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: NeuralTheme.secondarySoft,
+                side: BorderSide(
+                  color: NeuralTheme.secondary.withValues(alpha: 0.24),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+              icon: const Icon(Icons.logout_rounded),
+              label: const Text(
+                'SIGN OUT',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
           ),
         ],
       ),
@@ -1444,12 +2085,16 @@ class _SettingsSliderCard extends StatelessWidget {
 
 class _StatsDashboard extends StatefulWidget {
   const _StatsDashboard({
+    required this.currentUser,
     required this.stats,
     required this.sessions,
+    required this.leaderboardUsers,
   });
 
+  final AppUser? currentUser;
   final PlayerStats stats;
   final List<GameSession> sessions;
+  final List<AppUser> leaderboardUsers;
 
   @override
   State<_StatsDashboard> createState() => _StatsDashboardState();
@@ -1460,14 +2105,16 @@ class _StatsDashboardState extends State<_StatsDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final List<GameSession> leaderboardEntries = widget.sessions.leaderboard(
-      mode: _selectedFilter.mode,
-      limit: 5,
-    );
     final List<GameSession> recentRuns = widget.sessions.recentRuns(
       mode: _selectedFilter.mode,
       limit: 6,
     );
+    final int? currentRank = widget.currentUser == null
+        ? null
+        : widget.leaderboardUsers.indexWhere(
+                (AppUser user) => user.id == widget.currentUser!.id,
+              ) +
+              1;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1480,7 +2127,9 @@ class _StatsDashboardState extends State<_StatsDashboard> {
         ),
         const SizedBox(height: 10),
         Text(
-          'Local training record from completed sessions saved on this device.',
+          widget.currentUser == null
+              ? 'Local training record from completed sessions saved on this device.'
+              : 'Signed in as ${widget.currentUser!.username}. Runs and scores now save into the local SQLite backend.',
           style: TextStyle(
             color: NeuralTheme.textMuted,
             fontSize: 14,
@@ -1488,6 +2137,17 @@ class _StatsDashboardState extends State<_StatsDashboard> {
           ),
         ),
         const SizedBox(height: 20),
+        if (widget.currentUser != null &&
+            currentRank != null &&
+            currentRank > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: _LeaderboardSummaryCard(
+              rank: currentRank,
+              playerCount: widget.leaderboardUsers.length,
+              score: widget.currentUser!.score,
+            ),
+          ),
         _BestStreakCard(bestStreak: widget.stats.bestStreak),
         const SizedBox(height: 16),
         if (widget.sessions.isEmpty)
@@ -1560,7 +2220,8 @@ class _StatsDashboardState extends State<_StatsDashboard> {
                     child: _MetricCard(
                       label: 'OVERDRIVE BEST',
                       value: _formatNumber(
-                        widget.stats.bestScoreByMode[GameModeKey.overdrive] ?? 0,
+                        widget.stats.bestScoreByMode[GameModeKey.overdrive] ??
+                            0,
                       ),
                       accent: NeuralTheme.secondarySoft,
                       icon: Icons.bolt_rounded,
@@ -1614,14 +2275,11 @@ class _StatsDashboardState extends State<_StatsDashboard> {
             key: ValueKey<SessionViewFilter>(_selectedFilter),
             children: [
               _LeaderboardCard(
-                entries: leaderboardEntries,
-                filter: _selectedFilter,
+                currentUserId: widget.currentUser?.id,
+                users: widget.leaderboardUsers,
               ),
               const SizedBox(height: 16),
-              _RecentRunsCard(
-                runs: recentRuns,
-                filter: _selectedFilter,
-              ),
+              _RecentRunsCard(runs: recentRuns, filter: _selectedFilter),
             ],
           ),
         ),
@@ -1648,10 +2306,7 @@ class _AppNotice {
 }
 
 class _StatsSectionHeader extends StatelessWidget {
-  const _StatsSectionHeader({
-    required this.label,
-    required this.subtitle,
-  });
+  const _StatsSectionHeader({required this.label, required this.subtitle});
 
   final String label;
   final String subtitle;
@@ -1677,6 +2332,94 @@ class _StatsSectionHeader extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _LeaderboardSummaryCard extends StatelessWidget {
+  const _LeaderboardSummaryCard({
+    required this.rank,
+    required this.playerCount,
+    required this.score,
+  });
+
+  final int rank;
+  final int playerCount;
+  final int score;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: NeuralTheme.surface.withValues(alpha: 0.84),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: NeuralTheme.primary.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _LeaderboardSummaryMetric(
+              label: 'GLOBAL RANK',
+              value: '#$rank of $playerCount',
+              accent: NeuralTheme.primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _LeaderboardSummaryMetric(
+              label: 'PROFILE SCORE',
+              value: _formatNumber(score),
+              accent: NeuralTheme.secondarySoft,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LeaderboardSummaryMetric extends StatelessWidget {
+  const _LeaderboardSummaryMetric({
+    required this.label,
+    required this.value,
+    required this.accent,
+  });
+
+  final String label;
+  final String value;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: NeuralTheme.surfaceHighest.withValues(alpha: 0.38),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: NeuralTheme.textDim),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              color: accent,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.6,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1729,13 +2472,10 @@ class _SessionFilterPill extends StatelessWidget {
 }
 
 class _LeaderboardCard extends StatelessWidget {
-  const _LeaderboardCard({
-    required this.entries,
-    required this.filter,
-  });
+  const _LeaderboardCard({required this.users, required this.currentUserId});
 
-  final List<GameSession> entries;
-  final SessionViewFilter filter;
+  final List<AppUser> users;
+  final int? currentUserId;
 
   @override
   Widget build(BuildContext context) {
@@ -1745,7 +2485,9 @@ class _LeaderboardCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: NeuralTheme.surface.withValues(alpha: 0.86),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: NeuralTheme.secondary.withValues(alpha: 0.16)),
+        border: Border.all(
+          color: NeuralTheme.secondary.withValues(alpha: 0.16),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1762,7 +2504,7 @@ class _LeaderboardCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Top saved runs',
+                      'Top local players',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         color: NeuralTheme.text,
                         fontWeight: FontWeight.w800,
@@ -1770,7 +2512,7 @@ class _LeaderboardCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Sorted by score, then by stronger and newer runs inside ${filter.label.toLowerCase()}.',
+                      'Ranked from the SQLite users table by each local profile\'s best saved score.',
                       style: TextStyle(
                         color: NeuralTheme.textDim,
                         fontSize: 12,
@@ -1783,22 +2525,25 @@ class _LeaderboardCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
-          if (entries.isEmpty)
+          if (users.isEmpty)
             _DataPlaceholder(
               icon: Icons.leaderboard_rounded,
-              title: 'No ranked runs yet',
+              title: 'No local profiles yet',
               message:
-                  'Finish a session in this mode and it will appear here automatically.',
+                  'Create a profile and finish a run to populate the local player rankings.',
             )
           else
             Column(
-              children: List<Widget>.generate(entries.length, (int index) {
-                final GameSession session = entries[index];
+              children: List<Widget>.generate(users.length, (int index) {
+                final AppUser user = users[index];
                 return Padding(
-                  padding: EdgeInsets.only(bottom: index == entries.length - 1 ? 0 : 14),
+                  padding: EdgeInsets.only(
+                    bottom: index == users.length - 1 ? 0 : 14,
+                  ),
                   child: _LeaderboardEntryRow(
                     rank: index + 1,
-                    session: session,
+                    user: user,
+                    isCurrentUser: user.id == currentUserId,
                   ),
                 );
               }),
@@ -1812,17 +2557,21 @@ class _LeaderboardCard extends StatelessWidget {
 class _LeaderboardEntryRow extends StatelessWidget {
   const _LeaderboardEntryRow({
     required this.rank,
-    required this.session,
+    required this.user,
+    required this.isCurrentUser,
   });
 
   final int rank;
-  final GameSession session;
+  final AppUser user;
+  final bool isCurrentUser;
 
   @override
   Widget build(BuildContext context) {
-    final Color accent = session.mode == GameModeKey.focus
-        ? NeuralTheme.primary
-        : NeuralTheme.secondarySoft;
+    final Color accent = isCurrentUser
+        ? NeuralTheme.secondarySoft
+        : rank == 1
+        ? NeuralTheme.secondary
+        : NeuralTheme.primary;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1843,10 +2592,7 @@ class _LeaderboardEntryRow extends StatelessWidget {
             ),
             child: Text(
               '$rank',
-              style: TextStyle(
-                color: accent,
-                fontWeight: FontWeight.w900,
-              ),
+              style: TextStyle(color: accent, fontWeight: FontWeight.w900),
             ),
           ),
           const SizedBox(width: 14),
@@ -1860,7 +2606,7 @@ class _LeaderboardEntryRow extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
-                      _formatModeLabel(session.mode),
+                      user.username,
                       style: const TextStyle(
                         color: NeuralTheme.text,
                         fontSize: 15,
@@ -1868,14 +2614,14 @@ class _LeaderboardEntryRow extends StatelessWidget {
                       ),
                     ),
                     _SessionBadge(
-                      label: _formatSessionEndReason(session.endReason),
+                      label: isCurrentUser ? 'Current profile' : 'Local user',
                       color: accent,
                     ),
                   ],
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '${_formatNumber(session.score)} points  •  Chain ${session.bestStreak}  •  Round ${session.roundReached}',
+                  'Best saved score ${_formatNumber(user.score)}',
                   style: TextStyle(
                     color: NeuralTheme.textMuted,
                     fontSize: 12,
@@ -1884,18 +2630,17 @@ class _LeaderboardEntryRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _formatDateTime(session.endedAt),
-                  style: TextStyle(
-                    color: NeuralTheme.textDim,
-                    fontSize: 12,
-                  ),
+                  user.lastPlayedAt == null
+                      ? 'No completed sessions yet'
+                      : 'Last played ${_formatDateTime(user.lastPlayedAt!)}',
+                  style: TextStyle(color: NeuralTheme.textDim, fontSize: 12),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 14),
           Text(
-            _formatNumber(session.score),
+            _formatNumber(user.score),
             style: TextStyle(
               color: accent,
               fontSize: 24,
@@ -1910,10 +2655,7 @@ class _LeaderboardEntryRow extends StatelessWidget {
 }
 
 class _RecentRunsCard extends StatelessWidget {
-  const _RecentRunsCard({
-    required this.runs,
-    required this.filter,
-  });
+  const _RecentRunsCard({required this.runs, required this.filter});
 
   final List<GameSession> runs;
   final SessionViewFilter filter;
@@ -1933,7 +2675,10 @@ class _RecentRunsCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              _IconPlate(icon: Icons.history_rounded, color: NeuralTheme.primary),
+              _IconPlate(
+                icon: Icons.history_rounded,
+                color: NeuralTheme.primary,
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -1973,7 +2718,9 @@ class _RecentRunsCard extends StatelessWidget {
               children: List<Widget>.generate(runs.length, (int index) {
                 final GameSession session = runs[index];
                 return Padding(
-                  padding: EdgeInsets.only(bottom: index == runs.length - 1 ? 0 : 12),
+                  padding: EdgeInsets.only(
+                    bottom: index == runs.length - 1 ? 0 : 12,
+                  ),
                   child: _RecentRunRow(session: session),
                 );
               }),
@@ -2062,10 +2809,7 @@ class _RecentRunRow extends StatelessWidget {
 }
 
 class _SessionBadge extends StatelessWidget {
-  const _SessionBadge({
-    required this.label,
-    required this.color,
-  });
+  const _SessionBadge({required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -2209,7 +2953,9 @@ class _AppNoticeBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isWarning = notice.tone == _AppNoticeTone.warning;
-    final Color accent = isWarning ? NeuralTheme.secondarySoft : NeuralTheme.primarySoft;
+    final Color accent = isWarning
+        ? NeuralTheme.secondarySoft
+        : NeuralTheme.primarySoft;
 
     return Material(
       color: Colors.transparent,
@@ -2323,22 +3069,28 @@ class _MetricCard extends StatelessWidget {
 
 class _NeuralHomeShell extends StatefulWidget {
   const _NeuralHomeShell({
+    required this.currentUser,
     required this.playerStats,
     required this.sessions,
+    required this.leaderboardUsers,
     required this.appNotice,
     required this.settings,
     required this.onSessionCompleted,
     required this.onDismissNotice,
     required this.onSettingsChanged,
+    required this.onSignOut,
   });
 
+  final ValueNotifier<AppUser?> currentUser;
   final ValueNotifier<PlayerStats> playerStats;
   final ValueNotifier<List<GameSession>> sessions;
+  final ValueNotifier<List<AppUser>> leaderboardUsers;
   final ValueNotifier<_AppNotice?> appNotice;
   final ValueNotifier<NeuralSettings> settings;
   final Future<void> Function(GameSession session) onSessionCompleted;
   final VoidCallback onDismissNotice;
   final ValueChanged<NeuralSettings> onSettingsChanged;
+  final Future<void> Function() onSignOut;
 
   @override
   State<_NeuralHomeShell> createState() => _NeuralHomeShellState();
@@ -2394,20 +3146,25 @@ class _NeuralHomeShellState extends State<_NeuralHomeShell> {
             },
             children: [
               MainMenuScreen(
+                currentUser: widget.currentUser,
                 playerStats: widget.playerStats,
                 settings: widget.settings,
                 onSessionCompleted: widget.onSessionCompleted,
                 onOpenSettings: () => _goToItem(NeuralNavItem.settings),
               ),
               StatsScreen(
+                currentUser: widget.currentUser,
                 playerStats: widget.playerStats,
                 sessions: widget.sessions,
+                leaderboardUsers: widget.leaderboardUsers,
                 settings: widget.settings,
               ),
               SettingsScreen(
+                currentUser: widget.currentUser,
                 playerStats: widget.playerStats,
                 settings: widget.settings,
                 onSettingsChanged: widget.onSettingsChanged,
+                onSignOut: widget.onSignOut,
               ),
             ],
           ),

@@ -38,14 +38,19 @@ void main() {
       ),
     ];
 
-    test('leaderboard sorts by score, then streak, then round, then recency', () {
-      final List<GameSession> leaderboard = sessions.leaderboard(limit: 4);
+    test(
+      'leaderboard sorts by score, then streak, then round, then recency',
+      () {
+        final List<GameSession> leaderboard = sessions.leaderboard(limit: 4);
 
-      expect(
-        leaderboard.map((GameSession session) => session.id),
-        <String>['focus-top', 'focus-recent', 'focus-older', 'overdrive-mid'],
-      );
-    });
+        expect(leaderboard.map((GameSession session) => session.id), <String>[
+          'focus-top',
+          'focus-recent',
+          'focus-older',
+          'overdrive-mid',
+        ]);
+      },
+    );
 
     test('leaderboard can filter by mode', () {
       final List<GameSession> leaderboard = sessions.leaderboard(
@@ -53,19 +58,21 @@ void main() {
         limit: 4,
       );
 
-      expect(
-        leaderboard.map((GameSession session) => session.id),
-        <String>['focus-top', 'focus-recent', 'focus-older'],
-      );
+      expect(leaderboard.map((GameSession session) => session.id), <String>[
+        'focus-top',
+        'focus-recent',
+        'focus-older',
+      ]);
     });
 
     test('recent runs returns latest sessions first', () {
       final List<GameSession> recentRuns = sessions.recentRuns(limit: 3);
 
-      expect(
-        recentRuns.map((GameSession session) => session.id),
-        <String>['focus-recent', 'overdrive-mid', 'focus-top'],
-      );
+      expect(recentRuns.map((GameSession session) => session.id), <String>[
+        'focus-recent',
+        'overdrive-mid',
+        'focus-top',
+      ]);
     });
   });
 }

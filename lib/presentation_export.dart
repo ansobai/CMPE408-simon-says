@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import 'auth/auth_models.dart';
 import 'main.dart';
 import 'settings/neural_settings.dart';
 import 'stats/stats_models.dart';
@@ -46,12 +47,38 @@ class _PresentationExportAppState extends State<_PresentationExportApp> {
       endReason: SessionEndReason.timedOut,
     ),
   ];
-  late final ValueNotifier<PlayerStats> _playerStats = ValueNotifier<PlayerStats>(
-    PlayerStats.fromSessions(_sampleSessions),
-  );
+  late final ValueNotifier<PlayerStats> _playerStats =
+      ValueNotifier<PlayerStats>(PlayerStats.fromSessions(_sampleSessions));
   late final ValueNotifier<List<GameSession>> _sessions =
-      ValueNotifier<List<GameSession>>(<GameSession>[
-        ..._sampleSessions,
+      ValueNotifier<List<GameSession>>(<GameSession>[..._sampleSessions]);
+  final ValueNotifier<AppUser?> _currentUser = ValueNotifier<AppUser?>(
+    AppUser(
+      id: 1,
+      username: 'demo_player',
+      score: 3260,
+      createdAt: DateTime.utc(2026, 5, 3, 9, 00),
+      updatedAt: DateTime.utc(2026, 5, 4, 12, 17),
+      lastPlayedAt: DateTime.utc(2026, 5, 4, 12, 17),
+    ),
+  );
+  final ValueNotifier<List<AppUser>> _leaderboardUsers =
+      ValueNotifier<List<AppUser>>(<AppUser>[
+        AppUser(
+          id: 2,
+          username: 'pixel_ace',
+          score: 3890,
+          createdAt: DateTime.utc(2026, 5, 2, 18, 00),
+          updatedAt: DateTime.utc(2026, 5, 4, 18, 15),
+          lastPlayedAt: DateTime.utc(2026, 5, 4, 18, 15),
+        ),
+        AppUser(
+          id: 1,
+          username: 'demo_player',
+          score: 3260,
+          createdAt: DateTime.utc(2026, 5, 3, 9, 00),
+          updatedAt: DateTime.utc(2026, 5, 4, 12, 17),
+          lastPlayedAt: DateTime.utc(2026, 5, 4, 12, 17),
+        ),
       ]);
   final ValueNotifier<NeuralSettings> _settings = ValueNotifier<NeuralSettings>(
     const NeuralSettings(
@@ -107,6 +134,8 @@ class _PresentationExportAppState extends State<_PresentationExportApp> {
 
   @override
   void dispose() {
+    _currentUser.dispose();
+    _leaderboardUsers.dispose();
     _playerStats.dispose();
     _sessions.dispose();
     _settings.dispose();
@@ -174,6 +203,7 @@ class _PresentationExportAppState extends State<_PresentationExportApp> {
 
   Widget _buildMainMenu() {
     return MainMenuScreen(
+      currentUser: _currentUser,
       playerStats: _playerStats,
       settings: _settings,
       onSessionCompleted: (_) async {},
@@ -183,17 +213,21 @@ class _PresentationExportAppState extends State<_PresentationExportApp> {
 
   Widget _buildStats() {
     return StatsScreen(
+      currentUser: _currentUser,
       playerStats: _playerStats,
       sessions: _sessions,
+      leaderboardUsers: _leaderboardUsers,
       settings: _settings,
     );
   }
 
   Widget _buildSettings() {
     return SettingsScreen(
+      currentUser: _currentUser,
       playerStats: _playerStats,
       settings: _settings,
       onSettingsChanged: (_) {},
+      onSignOut: () async {},
     );
   }
 
@@ -250,14 +284,12 @@ class _PresentationExportAppState extends State<_PresentationExportApp> {
     }
 
     final ffi.DynamicLibrary user32 = ffi.DynamicLibrary.open('user32.dll');
-    final _GetForegroundWindow getForegroundWindow = user32.lookupFunction<
-      _GetForegroundWindowNative,
-      _GetForegroundWindow
-    >('GetForegroundWindow');
-    final _MoveWindow moveWindow = user32.lookupFunction<
-      _MoveWindowNative,
-      _MoveWindow
-    >('MoveWindow');
+    final _GetForegroundWindow getForegroundWindow = user32
+        .lookupFunction<_GetForegroundWindowNative, _GetForegroundWindow>(
+          'GetForegroundWindow',
+        );
+    final _MoveWindow moveWindow = user32
+        .lookupFunction<_MoveWindowNative, _MoveWindow>('MoveWindow');
 
     final ffi.Pointer<ffi.Void> windowHandle = getForegroundWindow();
     if (windowHandle == ffi.nullptr) {
@@ -269,7 +301,8 @@ class _PresentationExportAppState extends State<_PresentationExportApp> {
 
   Future<void> _saveCapture(File file) async {
     final RenderRepaintBoundary boundary =
-        _captureKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+        _captureKey.currentContext!.findRenderObject()!
+            as RenderRepaintBoundary;
     final ui.Image image = await boundary.toImage(pixelRatio: 1.0);
     final ByteData? byteData = await image.toByteData(
       format: ui.ImageByteFormat.png,
