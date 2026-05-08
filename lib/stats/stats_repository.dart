@@ -13,5 +13,5 @@ abstract class StatsRepository {
     required GameSession session,
   });
 
-  Future<List<AppUser>> loadLeaderboardUsers({int limit = 10});
+  Future<List<AppUser>> loadLeaderboardUsers({int? limit});
 }

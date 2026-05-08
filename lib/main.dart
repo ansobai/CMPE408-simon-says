@@ -2243,9 +2243,20 @@ class _StatsDashboardState extends State<_StatsDashboard> {
           ),
         const SizedBox(height: 28),
         const _StatsSectionHeader(
-          label: 'LOCAL LEADERBOARD',
+          label: 'PLAYER LEADERBOARD',
           subtitle:
-              'Every completed run is ranked locally so both game modes can be reviewed later.',
+              'All saved accounts on this app are compared here using each player\'s best recorded score.',
+        ),
+        const SizedBox(height: 16),
+        _LeaderboardCard(
+          currentUserId: widget.currentUser?.id,
+          users: widget.leaderboardUsers,
+        ),
+        const SizedBox(height: 14),
+        const _StatsSectionHeader(
+          label: 'YOUR RECENT RUNS',
+          subtitle:
+              'Review your own completed sessions by mode without mixing them into the player-vs-player rankings.',
         ),
         const SizedBox(height: 14),
         Wrap(
@@ -2274,11 +2285,6 @@ class _StatsDashboardState extends State<_StatsDashboard> {
           child: Column(
             key: ValueKey<SessionViewFilter>(_selectedFilter),
             children: [
-              _LeaderboardCard(
-                currentUserId: widget.currentUser?.id,
-                users: widget.leaderboardUsers,
-              ),
-              const SizedBox(height: 16),
               _RecentRunsCard(runs: recentRuns, filter: _selectedFilter),
             ],
           ),
@@ -2504,7 +2510,7 @@ class _LeaderboardCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Top local players',
+                      'Registered players',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         color: NeuralTheme.text,
                         fontWeight: FontWeight.w800,
@@ -2512,7 +2518,7 @@ class _LeaderboardCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Ranked from the SQLite users table by each local profile\'s best saved score.',
+                      'These rows come from real saved player accounts and are ranked by each account\'s best score.',
                       style: TextStyle(
                         color: NeuralTheme.textDim,
                         fontSize: 12,

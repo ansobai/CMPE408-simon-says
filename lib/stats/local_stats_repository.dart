@@ -74,7 +74,7 @@ class LocalStatsRepository extends StatsRepository {
   }
 
   @override
-  Future<List<AppUser>> loadLeaderboardUsers({int limit = 10}) async {
+  Future<List<AppUser>> loadLeaderboardUsers({int? limit}) async {
     final Database db = await _database.open();
     final List<Map<String, Object?>> rows = await db.query(
       'users',

@@ -138,7 +138,7 @@ class _InMemoryStatsRepository extends StatsRepository {
   const _InMemoryStatsRepository();
 
   @override
-  Future<List<AppUser>> loadLeaderboardUsers({int limit = 10}) async {
+  Future<List<AppUser>> loadLeaderboardUsers({int? limit}) async {
     return <AppUser>[];
   }
 
@@ -161,7 +161,7 @@ class _ThrowingStatsRepository extends StatsRepository {
   const _ThrowingStatsRepository();
 
   @override
-  Future<List<AppUser>> loadLeaderboardUsers({int limit = 10}) {
+  Future<List<AppUser>> loadLeaderboardUsers({int? limit}) {
     throw const FormatException('corrupt leaderboard');
   }
 

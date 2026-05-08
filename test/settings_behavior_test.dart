@@ -218,7 +218,7 @@ class _NoopStatsRepository extends StatsRepository {
   const _NoopStatsRepository();
 
   @override
-  Future<List<AppUser>> loadLeaderboardUsers({int limit = 10}) async {
+  Future<List<AppUser>> loadLeaderboardUsers({int? limit}) async {
     return const <AppUser>[];
   }
 

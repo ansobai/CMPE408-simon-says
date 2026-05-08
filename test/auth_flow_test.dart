@@ -150,7 +150,7 @@ class _EmptyStatsRepository extends StatsRepository {
   const _EmptyStatsRepository();
 
   @override
-  Future<List<AppUser>> loadLeaderboardUsers({int limit = 10}) async {
+  Future<List<AppUser>> loadLeaderboardUsers({int? limit}) async {
     return const <AppUser>[];
   }
 

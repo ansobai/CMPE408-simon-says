@@ -145,11 +145,12 @@ void main() {
     expect(find.text('640'), findsAtLeastNWidgets(1));
     expect(find.text('LAST PLAYED'), findsOneWidget);
     expect(find.text('May 4, 2026'), findsOneWidget);
-    expect(find.text('LOCAL LEADERBOARD'), findsOneWidget);
-    expect(find.text('Top local players'), findsOneWidget);
+    expect(find.text('PLAYER LEADERBOARD'), findsOneWidget);
+    expect(find.text('Registered players'), findsOneWidget);
     expect(find.text('bara'), findsOneWidget);
     expect(find.text('amro'), findsOneWidget);
     expect(find.text('Current profile'), findsOneWidget);
+    expect(find.text('YOUR RECENT RUNS'), findsOneWidget);
     expect(find.text('Recent sessions'), findsOneWidget);
     expect(find.text('Wrong tile'), findsAtLeastNWidgets(1));
     expect(find.text('Timer expired'), findsAtLeastNWidgets(1));
@@ -206,8 +207,10 @@ class _FakeStatsRepository extends StatsRepository {
   final List<AppUser> leaderboardUsers;
 
   @override
-  Future<List<AppUser>> loadLeaderboardUsers({int limit = 10}) async {
-    return leaderboardUsers.take(limit).toList(growable: false);
+  Future<List<AppUser>> loadLeaderboardUsers({int? limit}) async {
+    return limit == null
+        ? List<AppUser>.unmodifiable(leaderboardUsers)
+        : leaderboardUsers.take(limit).toList(growable: false);
   }
 
   @override

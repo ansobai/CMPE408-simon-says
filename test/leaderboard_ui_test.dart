@@ -75,6 +75,63 @@ void main() {
       expect(find.text('Current profile'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'stats screen ranks the current user against every saved account',
+    (WidgetTester tester) async {
+      final AppUser currentUser = AppUser(
+        id: 11,
+        username: 'bara',
+        score: 100,
+        createdAt: DateTime.parse('2026-05-04T10:00:00Z'),
+        updatedAt: DateTime.parse('2026-05-04T12:04:00Z'),
+        lastPlayedAt: DateTime.parse('2026-05-04T12:04:00Z'),
+      );
+      final List<AppUser> leaderboardUsers = List<AppUser>.generate(10, (
+        int index,
+      ) {
+        final int rank = index + 1;
+        return AppUser(
+          id: rank,
+          username: 'player_$rank',
+          score: 1200 - (rank * 50),
+          createdAt: DateTime.parse('2026-05-04T09:00:00Z'),
+          updatedAt: DateTime.parse('2026-05-04T09:00:00Z'),
+          lastPlayedAt: DateTime.parse('2026-05-04T09:00:00Z'),
+        );
+      })..add(currentUser);
+      final List<GameSession> sessions = <GameSession>[
+        GameSession(
+          id: 'session-1',
+          mode: GameModeKey.focus,
+          startedAt: DateTime.parse('2026-05-04T10:00:00Z'),
+          endedAt: DateTime.parse('2026-05-04T10:02:00Z'),
+          score: 100,
+          bestStreak: 2,
+          roundReached: 2,
+          endReason: SessionEndReason.wrongTile,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        NeuralRecallApp(
+          authRepository: _LeaderboardAuthRepository(currentUser),
+          statsRepository: _LeaderboardStatsRepository(
+            sessions: sessions,
+            leaderboardUsers: leaderboardUsers,
+          ),
+          settingsRepository: const _LeaderboardSettingsRepository(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.stacked_bar_chart_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.text('#11 of 11'), findsOneWidget);
+      expect(find.text('player_1'), findsOneWidget);
+      expect(find.text('bara'), findsOneWidget);
+    },
+  );
 }
 
 class _LeaderboardAuthRepository extends AuthRepository {
@@ -116,8 +173,10 @@ class _LeaderboardStatsRepository extends StatsRepository {
   final List<AppUser> leaderboardUsers;
 
   @override
-  Future<List<AppUser>> loadLeaderboardUsers({int limit = 10}) async {
-    return leaderboardUsers.take(limit).toList(growable: false);
+  Future<List<AppUser>> loadLeaderboardUsers({int? limit}) async {
+    return limit == null
+        ? List<AppUser>.unmodifiable(leaderboardUsers)
+        : leaderboardUsers.take(limit).toList(growable: false);
   }
 
   @override
