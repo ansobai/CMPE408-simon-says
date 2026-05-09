@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:simon_says/api/api_errors.dart';
 import 'package:simon_says/auth/auth_models.dart';
 import 'package:simon_says/auth/auth_repository.dart';
 import 'package:simon_says/main.dart';
@@ -38,7 +39,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('No sessions have been saved yet'), findsOneWidget);
-    expect(find.text('No local profiles yet'), findsOneWidget);
+    expect(find.text('No leaderboard entries yet'), findsOneWidget);
     expect(find.text('No session history yet'), findsOneWidget);
   });
 
@@ -55,13 +56,36 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Saved account data could not be loaded'), findsOneWidget);
+    expect(
+      find.text('Shared account data could not be loaded'),
+      findsOneWidget,
+    );
     expect(
       find.textContaining(
-        'local account, stats, leaderboard, and recent run history',
+        'sessions, stats, or leaderboard data could not be fetched',
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('expired startup session returns to sign in with a warning', (
+    WidgetTester tester,
+  ) async {
+    await _setPhoneSurface(tester);
+    await tester.pumpWidget(
+      NeuralRecallApp(
+        authRepository: _SignedInAuthRepository(),
+        statsRepository: const _UnauthorizedStatsRepository(),
+        settingsRepository: const _InMemorySettingsRepository(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Sign in or create a shared player account'),
+      findsOneWidget,
+    );
+    expect(find.text('Your session expired'), findsOneWidget);
   });
 
   testWidgets('app shows a notice when settings cannot be persisted', (
@@ -173,6 +197,31 @@ class _ThrowingStatsRepository extends StatsRepository {
   @override
   Future<List<GameSession>> loadSessionsForUser(int userId) {
     throw const FormatException('corrupt sessions');
+  }
+
+  @override
+  Future<void> saveCompletedSession({
+    required int userId,
+    required GameSession session,
+  }) async {}
+}
+
+class _UnauthorizedStatsRepository extends StatsRepository {
+  const _UnauthorizedStatsRepository();
+
+  @override
+  Future<List<AppUser>> loadLeaderboardUsers({int? limit}) async {
+    return const <AppUser>[];
+  }
+
+  @override
+  Future<PlayerStats> loadStatsForUser(int userId) {
+    throw const ApiUnauthorizedException();
+  }
+
+  @override
+  Future<List<GameSession>> loadSessionsForUser(int userId) {
+    throw const ApiUnauthorizedException();
   }
 
   @override

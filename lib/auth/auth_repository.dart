@@ -5,6 +5,7 @@ enum AuthFailureCode {
   usernameTaken,
   invalidUsername,
   invalidPassword,
+  serviceUnavailable,
 }
 
 class AuthFailure implements Exception {

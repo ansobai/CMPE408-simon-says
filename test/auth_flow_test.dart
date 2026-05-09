@@ -20,7 +20,7 @@ Future<void> _setPhoneSurface(WidgetTester tester) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('sign up creates a local profile and enters the app', (
+  testWidgets('sign up creates a shared profile and enters the app', (
     WidgetTester tester,
   ) async {
     await _setPhoneSurface(tester);
@@ -36,7 +36,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Sign in or create a local player profile'),
+      find.text('Sign in or create a shared player account'),
       findsOneWidget,
     );
     await tester.tap(find.text('SIGN UP'));
@@ -50,7 +50,7 @@ void main() {
     expect(find.text('SIGNED IN AS BARA'), findsOneWidget);
   });
 
-  testWidgets('sign out returns to the local auth screen', (
+  testWidgets('sign out returns to the auth screen', (
     WidgetTester tester,
   ) async {
     await _setPhoneSurface(tester);
@@ -85,10 +85,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Sign in or create a local player profile'),
+      find.text('Sign in or create a shared player account'),
       findsOneWidget,
     );
-    expect(find.text('Signed out locally'), findsOneWidget);
+    expect(find.text('Signed out'), findsOneWidget);
   });
 }
 

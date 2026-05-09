@@ -149,7 +149,7 @@ void main() {
     expect(find.text('Registered players'), findsOneWidget);
     expect(find.text('bara'), findsOneWidget);
     expect(find.text('amro'), findsOneWidget);
-    expect(find.text('Current profile'), findsOneWidget);
+    expect(find.text('Current player'), findsOneWidget);
     expect(find.text('YOUR RECENT RUNS'), findsOneWidget);
     expect(find.text('Recent sessions'), findsOneWidget);
     expect(find.text('Wrong tile'), findsAtLeastNWidgets(1));
@@ -160,7 +160,7 @@ void main() {
 
     expect(find.text('Ember Glow'), findsOneWidget);
     expect(find.textContaining('Current theme: Ember Glow'), findsOneWidget);
-    expect(find.text('LOCAL PROFILE'), findsOneWidget);
+    expect(find.text('ACCOUNT'), findsOneWidget);
     expect(find.text('bara'), findsOneWidget);
   });
 }

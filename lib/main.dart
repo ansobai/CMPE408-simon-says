@@ -4,14 +4,20 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'api/api_client.dart';
+import 'api/api_errors.dart';
+import 'app_environment.dart';
 import 'auth/auth_models.dart';
 import 'auth/auth_repository.dart';
 import 'auth/local_auth_repository.dart';
+import 'auth/remote_auth_repository.dart';
+import 'auth/shared_preferences_auth_token_store.dart';
 import 'neural_sound_controller.dart';
 import 'settings/local_settings_repository.dart';
 import 'settings/neural_settings.dart';
 import 'settings/settings_repository.dart';
 import 'stats/local_stats_repository.dart';
+import 'stats/remote_stats_repository.dart';
 import 'stats/stats_models.dart';
 import 'stats/stats_repository.dart';
 
@@ -55,15 +61,34 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   late final AuthRepository _authRepository;
   late final StatsRepository _statsRepository;
   late final SettingsRepository _settingsRepository;
+  ApiClient? _ownedApiClient;
   bool _isLoadingAppState = true;
 
   @override
   void initState() {
     super.initState();
-    _authRepository = widget.authRepository ?? LocalAuthRepository();
-    _statsRepository = widget.statsRepository ?? LocalStatsRepository();
     _settingsRepository =
         widget.settingsRepository ?? LocalSettingsRepository();
+    if (AppEnvironment.useLocalRepositories) {
+      _authRepository = widget.authRepository ?? LocalAuthRepository();
+      _statsRepository = widget.statsRepository ?? LocalStatsRepository();
+    } else {
+      final SharedPreferencesAuthTokenStore tokenStore =
+          SharedPreferencesAuthTokenStore();
+      _ownedApiClient = ApiClient(
+        baseUrl: AppEnvironment.apiBaseUrl,
+        tokenStore: tokenStore,
+      );
+      _authRepository =
+          widget.authRepository ??
+          RemoteAuthRepository(
+            apiClient: _ownedApiClient!,
+            tokenStore: tokenStore,
+          );
+      _statsRepository =
+          widget.statsRepository ??
+          RemoteStatsRepository(apiClient: _ownedApiClient!);
+    }
     WidgetsBinding.instance.addObserver(_fullscreenObserver);
     unawaited(_loadPersistedAppState());
   }
@@ -74,24 +99,54 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     List<GameSession> sessions = <GameSession>[];
     List<AppUser> leaderboardUsers = <AppUser>[];
     NeuralSettings settings = const NeuralSettings();
-    bool recoveredStatsData = false;
     bool recoveredSettings = false;
-    bool recoveredAuthState = false;
+    bool authServiceUnavailable = false;
+    bool leaderboardUnavailable = false;
+    bool signedInDataUnavailable = false;
+    bool sessionExpired = false;
 
     try {
       currentUser = await _authRepository.restoreSession();
-      leaderboardUsers = await _statsRepository.loadLeaderboardUsers();
-      if (currentUser != null) {
-        sessions = await _statsRepository.loadSessionsForUser(currentUser.id);
-        stats = await _statsRepository.loadStatsForUser(currentUser.id);
-      }
+    } on ApiException {
+      authServiceUnavailable = true;
     } catch (_) {
-      currentUser = null;
-      sessions = <GameSession>[];
-      stats = PlayerStats.empty();
+      authServiceUnavailable = true;
+    }
+
+    try {
+      leaderboardUsers = await _statsRepository.loadLeaderboardUsers();
+    } on ApiException {
       leaderboardUsers = <AppUser>[];
-      recoveredStatsData = true;
-      recoveredAuthState = true;
+      leaderboardUnavailable = true;
+    } catch (_) {
+      leaderboardUsers = <AppUser>[];
+      leaderboardUnavailable = true;
+    }
+
+    if (currentUser != null) {
+      try {
+        final _SignedInState signedInState = await _fetchSignedInData(
+          currentUser.id,
+        );
+        currentUser = signedInState.user;
+        sessions = signedInState.sessions;
+        stats = signedInState.stats;
+        leaderboardUsers = signedInState.leaderboardUsers;
+      } on ApiUnauthorizedException {
+        await _authRepository.signOut();
+        currentUser = null;
+        sessions = <GameSession>[];
+        stats = PlayerStats.empty();
+        sessionExpired = true;
+      } on ApiException {
+        sessions = <GameSession>[];
+        stats = PlayerStats.empty();
+        signedInDataUnavailable = true;
+      } catch (_) {
+        sessions = <GameSession>[];
+        stats = PlayerStats.empty();
+        signedInDataUnavailable = true;
+      }
     }
 
     try {
@@ -110,23 +165,53 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     _sessions.value = List<GameSession>.unmodifiable(sessions);
     _leaderboardUsers.value = List<AppUser>.unmodifiable(leaderboardUsers);
     _settings.value = settings;
-    if (recoveredAuthState && recoveredSettings) {
+    if (sessionExpired) {
       _showNotice(
         const _AppNotice(
-          title: 'Saved app data was reset for this launch',
+          title: 'Your session expired',
           message:
-              'We could not read the stored account, sessions, or settings, so the app recovered with defaults.',
-          icon: Icons.storage_rounded,
+              'Sign in again to refresh your shared account, stats, and score history.',
+          icon: Icons.lock_clock_rounded,
           tone: _AppNoticeTone.warning,
         ),
       );
-    } else if (recoveredStatsData) {
+    } else if (signedInDataUnavailable) {
       _showNotice(
         const _AppNotice(
-          title: 'Saved account data could not be loaded',
+          title: 'Shared account data could not be loaded',
           message:
-              'The local account, stats, leaderboard, and recent run history were reset safely for this launch.',
-          icon: Icons.history_toggle_off_rounded,
+              'Your sign-in state is intact, but sessions, stats, or leaderboard data could not be fetched from the shared backend yet.',
+          icon: Icons.cloud_off_rounded,
+          tone: _AppNoticeTone.warning,
+        ),
+      );
+    } else if (authServiceUnavailable && leaderboardUnavailable) {
+      _showNotice(
+        const _AppNotice(
+          title: 'Shared service unavailable',
+          message:
+              'The app could not reach the shared auth or leaderboard service. Check the API host and try again.',
+          icon: Icons.portable_wifi_off_rounded,
+          tone: _AppNoticeTone.warning,
+        ),
+      );
+    } else if (authServiceUnavailable) {
+      _showNotice(
+        const _AppNotice(
+          title: 'Shared auth unavailable',
+          message:
+              'The app could not verify the saved access token, so sign-in is unavailable until the backend responds again.',
+          icon: Icons.portable_wifi_off_rounded,
+          tone: _AppNoticeTone.warning,
+        ),
+      );
+    } else if (leaderboardUnavailable) {
+      _showNotice(
+        const _AppNotice(
+          title: 'Leaderboard unavailable',
+          message:
+              'The shared leaderboard could not be loaded right now. Core app screens still work, and scores can sync again once the backend returns.',
+          icon: Icons.leaderboard_rounded,
           tone: _AppNoticeTone.warning,
         ),
       );
@@ -161,6 +246,22 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
       if (!mounted) {
         return;
       }
+    } on ApiUnauthorizedException {
+      await _handleExpiredSession();
+    } on ApiException {
+      if (!mounted) {
+        return;
+      }
+
+      _showNotice(
+        const _AppNotice(
+          title: 'This run could not be saved',
+          message:
+              'The run finished normally, but the shared backend did not accept the session, so your synced stats and leaderboard rank were left unchanged.',
+          icon: Icons.save_as_rounded,
+          tone: _AppNoticeTone.warning,
+        ),
+      );
     } catch (_) {
       if (!mounted) {
         return;
@@ -170,7 +271,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
         const _AppNotice(
           title: 'This run could not be saved',
           message:
-              'The session finished normally, but the local stats and leaderboard were left unchanged.',
+              'The run finished normally, but the shared backend did not accept the session, so your synced stats and leaderboard rank were left unchanged.',
           icon: Icons.save_as_rounded,
           tone: _AppNoticeTone.warning,
         ),
@@ -178,21 +279,37 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     }
   }
 
-  Future<void> _reloadSignedInData(int userId) async {
+  Future<_SignedInState> _fetchSignedInData(int userId) async {
     final AppUser? refreshedUser = await _authRepository.loadUserById(userId);
     final List<GameSession> sessions = await _statsRepository
         .loadSessionsForUser(userId);
     final PlayerStats stats = await _statsRepository.loadStatsForUser(userId);
     final List<AppUser> leaderboardUsers = await _statsRepository
         .loadLeaderboardUsers();
+    return _SignedInState(
+      user: refreshedUser,
+      sessions: sessions,
+      stats: stats,
+      leaderboardUsers: leaderboardUsers,
+    );
+  }
+
+  void _applySignedInState(_SignedInState signedInState) {
+    _currentUser.value = signedInState.user;
+    _sessions.value = List<GameSession>.unmodifiable(signedInState.sessions);
+    _playerStats.value = signedInState.stats;
+    _leaderboardUsers.value = List<AppUser>.unmodifiable(
+      signedInState.leaderboardUsers,
+    );
+  }
+
+  Future<void> _reloadSignedInData(int userId) async {
+    final _SignedInState signedInState = await _fetchSignedInData(userId);
     if (!mounted) {
       return;
     }
 
-    _currentUser.value = refreshedUser;
-    _sessions.value = List<GameSession>.unmodifiable(sessions);
-    _playerStats.value = stats;
-    _leaderboardUsers.value = List<AppUser>.unmodifiable(leaderboardUsers);
+    _applySignedInState(signedInState);
   }
 
   void _updateSettings(NeuralSettings nextSettings) {
@@ -237,13 +354,33 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     }
     try {
       await _reloadSignedInData(user.id);
-    } catch (_) {
+    } on ApiUnauthorizedException {
+      await _handleExpiredSession();
+    } on ApiException {
       if (mounted) {
+        _currentUser.value = user;
+        _playerStats.value = PlayerStats.empty();
+        _sessions.value = const <GameSession>[];
         _showNotice(
           const _AppNotice(
             title: 'Account data could not be loaded',
             message:
-                'The sign-in worked, but the local sessions and leaderboard could not be opened yet.',
+                'The sign-in worked, but sessions, stats, or leaderboard data could not be fetched from the shared backend yet.',
+            icon: Icons.lock_open_rounded,
+            tone: _AppNoticeTone.warning,
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        _currentUser.value = user;
+        _playerStats.value = PlayerStats.empty();
+        _sessions.value = const <GameSession>[];
+        _showNotice(
+          const _AppNotice(
+            title: 'Account data could not be loaded',
+            message:
+                'The sign-in worked, but sessions, stats, or leaderboard data could not be fetched from the shared backend yet.',
             icon: Icons.lock_open_rounded,
             tone: _AppNoticeTone.warning,
           ),
@@ -256,6 +393,27 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
         });
       }
     }
+  }
+
+  Future<void> _handleExpiredSession() async {
+    await _authRepository.signOut();
+    if (!mounted) {
+      return;
+    }
+
+    _currentUser.value = null;
+    _playerStats.value = PlayerStats.empty();
+    _sessions.value = const <GameSession>[];
+    _leaderboardUsers.value = const <AppUser>[];
+    _showNotice(
+      const _AppNotice(
+        title: 'Your session expired',
+        message:
+            'Sign in again to continue syncing scores, stats, and recent runs.',
+        icon: Icons.lock_clock_rounded,
+        tone: _AppNoticeTone.warning,
+      ),
+    );
   }
 
   Future<void> _signOut() async {
@@ -271,9 +429,8 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
       _leaderboardUsers.value = const <AppUser>[];
       _showNotice(
         const _AppNotice(
-          title: 'Signed out locally',
-          message:
-              'Your device profile is closed. Sign in again to keep saving runs.',
+          title: 'Signed out',
+          message: 'Your shared account session is closed on this device.',
           icon: Icons.logout_rounded,
         ),
       );
@@ -283,6 +440,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(_fullscreenObserver);
+    _ownedApiClient?.close();
     _currentUser.dispose();
     _playerStats.dispose();
     _sessions.dispose();
@@ -379,6 +537,20 @@ class _StartupLoadingScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _SignedInState {
+  const _SignedInState({
+    required this.user,
+    required this.sessions,
+    required this.stats,
+    required this.leaderboardUsers,
+  });
+
+  final AppUser? user;
+  final List<GameSession> sessions;
+  final PlayerStats stats;
+  final List<AppUser> leaderboardUsers;
 }
 
 enum _AuthMode { signIn, signUp }
@@ -498,7 +670,7 @@ class _LocalAuthScreenState extends State<_LocalAuthScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'LOCAL ACCESS',
+                              'SHARED ACCESS',
                               style: Theme.of(context).textTheme.labelSmall
                                   ?.copyWith(
                                     color: NeuralTheme.textDim.withValues(
@@ -508,7 +680,7 @@ class _LocalAuthScreenState extends State<_LocalAuthScreen> {
                             ),
                             const SizedBox(height: 12),
                             const Text(
-                              'Sign in or create a local player profile',
+                              'Sign in or create a shared player account',
                               style: TextStyle(
                                 color: NeuralTheme.text,
                                 fontSize: 28,
@@ -518,7 +690,7 @@ class _LocalAuthScreenState extends State<_LocalAuthScreen> {
                             ),
                             const SizedBox(height: 10),
                             const Text(
-                              'Usernames, password hashes, and leaderboard scores are stored in SQLite on this device.',
+                              'Your access token stays on this device, while scores and stats sync through the shared leaderboard API.',
                               style: TextStyle(
                                 color: NeuralTheme.textMuted,
                                 fontSize: 14,
@@ -1639,14 +1811,14 @@ class _LocalProfileCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'LOCAL PROFILE',
+                      'ACCOUNT',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: NeuralTheme.textDim.withValues(alpha: 0.72),
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      currentUser?.username ?? 'No active profile',
+                      currentUser?.username ?? 'No active account',
                       style: const TextStyle(
                         color: NeuralTheme.text,
                         fontSize: 20,
@@ -1662,8 +1834,8 @@ class _LocalProfileCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             currentUser == null
-                ? 'Sign in to save runs against a named account on this device.'
-                : 'Best saved score ${_formatNumber(currentUser!.score)}. Sign out here if you want to switch to another local user.',
+                ? 'Sign in to sync runs to your shared account.'
+                : 'Best synced score ${_formatNumber(currentUser!.score)}. Sign out here if you want to switch to another player account.',
             style: const TextStyle(
               color: NeuralTheme.textMuted,
               fontSize: 14,
@@ -2128,8 +2300,8 @@ class _StatsDashboardState extends State<_StatsDashboard> {
         const SizedBox(height: 10),
         Text(
           widget.currentUser == null
-              ? 'Local training record from completed sessions saved on this device.'
-              : 'Signed in as ${widget.currentUser!.username}. Runs and scores now save into the local SQLite backend.',
+              ? 'Shared training records appear here after the first synced run.'
+              : 'Signed in as ${widget.currentUser!.username}. Runs and scores now sync through the shared backend.',
           style: TextStyle(
             color: NeuralTheme.textMuted,
             fontSize: 14,
@@ -2245,7 +2417,7 @@ class _StatsDashboardState extends State<_StatsDashboard> {
         const _StatsSectionHeader(
           label: 'PLAYER LEADERBOARD',
           subtitle:
-              'All saved accounts on this app are compared here using each player\'s best recorded score.',
+              'All shared accounts are ranked here by each player\'s best recorded score.',
         ),
         const SizedBox(height: 16),
         _LeaderboardCard(
@@ -2518,7 +2690,7 @@ class _LeaderboardCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'These rows come from real saved player accounts and are ranked by each account\'s best score.',
+                      'These rows come from shared player accounts and are ranked by each account\'s best score.',
                       style: TextStyle(
                         color: NeuralTheme.textDim,
                         fontSize: 12,
@@ -2534,9 +2706,9 @@ class _LeaderboardCard extends StatelessWidget {
           if (users.isEmpty)
             _DataPlaceholder(
               icon: Icons.leaderboard_rounded,
-              title: 'No local profiles yet',
+              title: 'No leaderboard entries yet',
               message:
-                  'Create a profile and finish a run to populate the local player rankings.',
+                  'Create an account and finish a synced run to populate the shared player rankings.',
             )
           else
             Column(
@@ -2620,7 +2792,7 @@ class _LeaderboardEntryRow extends StatelessWidget {
                       ),
                     ),
                     _SessionBadge(
-                      label: isCurrentUser ? 'Current profile' : 'Local user',
+                      label: isCurrentUser ? 'Current player' : 'Player',
                       color: accent,
                     ),
                   ],

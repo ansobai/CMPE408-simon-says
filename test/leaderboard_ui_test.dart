@@ -72,7 +72,7 @@ void main() {
       expect(find.text('#2 of 3'), findsOneWidget);
       expect(find.text('PROFILE SCORE'), findsOneWidget);
       expect(find.text('1,200'), findsAtLeastNWidgets(1));
-      expect(find.text('Current profile'), findsOneWidget);
+      expect(find.text('Current player'), findsOneWidget);
     },
   );
 
