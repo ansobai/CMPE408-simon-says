@@ -1,17 +1,50 @@
 # simon_says
 
-A new Flutter project.
+Simon Says is a Flutter mobile app.
 
-## Getting Started
+## Prerequisites
 
-This project is a starting point for a Flutter application.
+- Install the Flutter SDK
+- Install a device emulator or connect a physical device
 
-A few resources to get you started if this is your first Flutter project:
+Verify Flutter is available:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```bash
+flutter --version
+flutter doctor
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Project Setup
+
+Clone the repository and install all project dependencies declared in `pubspec.yaml`:
+
+```bash
+git clone https://github.com/ansobai/CMPE408-simon-says.git
+cd CMPE408-simon-says
+flutter pub get
+```
+
+## Library Installation Commands
+
+If you want to add the libraries used by this project manually, run:
+
+```bash
+flutter pub add cupertino_icons
+flutter pub add audioplayers
+flutter pub add crypto
+flutter pub add path
+flutter pub add sqflite
+flutter pub add --dev flutter_lints
+```
+
+## Run The App
+
+```bash
+flutter run
+```
+
+## Test
+
+```bash
+flutter test
+```

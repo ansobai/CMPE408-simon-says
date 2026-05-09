@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local presentation draft
+presentation_assets/neural_recall_progress_update.pptx
