@@ -45,7 +45,7 @@ Run the API with:
 python -m uvicorn backend.app.main:create_app --factory --reload
 ```
 
-By default the Flutter app expects the API at `http://localhost:8000`. Override
+By default the Flutter app expects the API at `http://89.167.98.133:8000`. Override
 it for devices, emulators, or deployed environments with:
 
 ```bash
