@@ -1,0 +1,19 @@
+.git
+.dart_tool
+.idea
+.pytest_cache
+android
+assets
+build
+ios
+linux
+macos
+test
+tool
+web
+windows
+.flutter-plugins-dependencies
+408_proposal (1) (1).pdf
+flutter_01.log
+presentation_assets
+presentation_assets_local_backup

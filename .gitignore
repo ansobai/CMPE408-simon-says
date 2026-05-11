@@ -46,3 +46,9 @@ app.*.map.json
 
 # Local presentation draft
 presentation_assets/neural_recall_progress_update.pptx
+
+# Local environment files
+.env
+.env.*
+!.env.example
+!backend/.env.example

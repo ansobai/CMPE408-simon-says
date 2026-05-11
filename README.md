@@ -58,6 +58,64 @@ If you want to keep using the old local-only repositories for development, add:
 flutter run --dart-define=USE_LOCAL_DATA=true
 ```
 
+## Docker Deployment
+
+The current repo is ready to deploy the shared backend with Docker Compose:
+
+- `api`: FastAPI app
+- `db`: PostgreSQL with a named Docker volume for persistence
+
+The Flutter app itself is still primarily a mobile/desktop client. It is not
+ready for browser deployment yet because runtime code imports `dart:io`, so the
+remote Docker deployment target is the backend API.
+
+### On the remote server
+
+Clone the repo, copy the deployment env file, and set real secrets:
+
+```bash
+git clone https://github.com/ansobai/CMPE408-simon-says.git
+cd CMPE408-simon-says
+cp .env.example .env
+```
+
+Edit `.env` and change at least:
+
+- `POSTGRES_PASSWORD`
+- `JWT_SECRET`
+- `CORS_ORIGINS` if you later add a browser client
+
+Start the stack:
+
+```bash
+docker compose up -d --build
+```
+
+Check that both services are healthy:
+
+```bash
+docker compose ps
+docker compose logs -f api
+curl http://YOUR_SERVER_IP:8000/healthz
+```
+
+If your server firewall is enabled, allow the API port:
+
+```bash
+sudo ufw allow 8000/tcp
+```
+
+### Point the Flutter app at the server
+
+Run the app with the remote API URL:
+
+```bash
+flutter run --dart-define=API_BASE_URL=http://YOUR_SERVER_IP:8000
+```
+
+If you later put the API behind a reverse proxy with TLS, switch that URL to
+`https://...`.
+
 ## Library Installation Commands
 
 If you want to add the libraries used by this project manually, run:
