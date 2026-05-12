@@ -47,6 +47,13 @@ app.*.map.json
 # Local presentation draft
 presentation_assets/neural_recall_progress_update.pptx
 
+# Presentation outputs and capture artifacts
+presentation_assets/*.pptx
+presentation_assets/CMPE408_*.md
+presentation_assets/generated_*/
+test/presentation_assets/
+test/failures/
+
 # Local environment files
 .env
 .env.*
