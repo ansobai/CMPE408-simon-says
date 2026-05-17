@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -8,6 +9,8 @@ import 'api/api_client.dart';
 import 'api/api_errors.dart';
 import 'app_environment.dart';
 import 'auth/auth_models.dart';
+import 'auth/clerk_auth_repository.dart';
+import 'auth/clerk_auth_token_store.dart';
 import 'auth/auth_repository.dart';
 import 'auth/local_auth_repository.dart';
 import 'auth/remote_auth_repository.dart';
@@ -24,7 +27,26 @@ import 'stats/stats_repository.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _configureFullscreenUi();
-  runApp(const NeuralRecallApp());
+  runApp(_buildRootApp());
+}
+
+Widget _buildRootApp() {
+  if (AppEnvironment.useLocalRepositories) {
+    return const NeuralRecallApp();
+  }
+
+  if (AppEnvironment.clerkPublishableKey.isEmpty) {
+    return const _MissingClerkConfigurationApp();
+  }
+
+  return ClerkAuth(
+    config: ClerkAuthConfig(publishableKey: AppEnvironment.clerkPublishableKey),
+    child: ClerkAuthBuilder(
+      builder: (context, authState) {
+        return NeuralRecallApp(clerkAuthState: authState);
+      },
+    ),
+  );
 }
 
 class NeuralRecallApp extends StatefulWidget {
@@ -33,11 +55,13 @@ class NeuralRecallApp extends StatefulWidget {
     this.authRepository,
     this.statsRepository,
     this.settingsRepository,
+    this.clerkAuthState,
   });
 
   final AuthRepository? authRepository;
   final StatsRepository? statsRepository;
   final SettingsRepository? settingsRepository;
+  final ClerkAuthState? clerkAuthState;
 
   @override
   State<NeuralRecallApp> createState() => _NeuralRecallAppState();
@@ -63,6 +87,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   late final SettingsRepository _settingsRepository;
   ApiClient? _ownedApiClient;
   bool _isLoadingAppState = true;
+  bool _isReconcilingClerkSession = false;
 
   @override
   void initState() {
@@ -72,6 +97,24 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     if (AppEnvironment.useLocalRepositories) {
       _authRepository = widget.authRepository ?? LocalAuthRepository();
       _statsRepository = widget.statsRepository ?? LocalStatsRepository();
+    } else if (widget.clerkAuthState != null) {
+      final ClerkAuthTokenStore tokenStore = ClerkAuthTokenStore(
+        auth: widget.clerkAuthState!,
+      );
+      _ownedApiClient = ApiClient(
+        baseUrl: AppEnvironment.apiBaseUrl,
+        tokenStore: tokenStore,
+      );
+      _authRepository =
+          widget.authRepository ??
+          ClerkAuthRepository(
+            apiClient: _ownedApiClient!,
+            auth: widget.clerkAuthState!,
+          );
+      _statsRepository =
+          widget.statsRepository ??
+          RemoteStatsRepository(apiClient: _ownedApiClient!);
+      widget.clerkAuthState!.addListener(_handleClerkAuthStateChanged);
     } else {
       final SharedPreferencesAuthTokenStore tokenStore =
           SharedPreferencesAuthTokenStore();
@@ -91,6 +134,24 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     }
     WidgetsBinding.instance.addObserver(_fullscreenObserver);
     unawaited(_loadPersistedAppState());
+  }
+
+  void _handleClerkAuthStateChanged() {
+    final ClerkAuthState? authState = widget.clerkAuthState;
+    if (authState == null || _isLoadingAppState || _isReconcilingClerkSession) {
+      return;
+    }
+
+    if (!authState.isSignedIn || authState.user == null) {
+      if (_currentUser.value != null) {
+        _reconcileSignedOutClerkState();
+      }
+      return;
+    }
+
+    if (_currentUser.value == null) {
+      unawaited(_reconcileSignedInClerkState());
+    }
   }
 
   Future<void> _loadPersistedAppState() async {
@@ -395,25 +456,60 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     }
   }
 
+  Future<void> _reconcileSignedInClerkState() async {
+    if (_isReconcilingClerkSession) {
+      return;
+    }
+
+    _isReconcilingClerkSession = true;
+    try {
+      final AppUser? user = await _authRepository.restoreSession();
+      if (user == null || !mounted) {
+        return;
+      }
+      await _handleSignedIn(user);
+    } on ApiUnauthorizedException {
+      await _handleExpiredSession();
+    } finally {
+      _isReconcilingClerkSession = false;
+    }
+  }
+
+  void _reconcileSignedOutClerkState() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _currentUser.value = null;
+      _playerStats.value = PlayerStats.empty();
+      _sessions.value = const <GameSession>[];
+      _leaderboardUsers.value = const <AppUser>[];
+      _clearNotice();
+    });
+  }
+
   Future<void> _handleExpiredSession() async {
     await _authRepository.signOut();
     if (!mounted) {
       return;
     }
 
-    _currentUser.value = null;
-    _playerStats.value = PlayerStats.empty();
-    _sessions.value = const <GameSession>[];
-    _leaderboardUsers.value = const <AppUser>[];
-    _showNotice(
-      const _AppNotice(
-        title: 'Your session expired',
-        message:
-            'Sign in again to continue syncing scores, stats, and recent runs.',
-        icon: Icons.lock_clock_rounded,
-        tone: _AppNoticeTone.warning,
-      ),
-    );
+    setState(() {
+      _currentUser.value = null;
+      _playerStats.value = PlayerStats.empty();
+      _sessions.value = const <GameSession>[];
+      _leaderboardUsers.value = const <AppUser>[];
+      _showNotice(
+        const _AppNotice(
+          title: 'Your session expired',
+          message:
+              'Sign in again to continue syncing scores, stats, and recent runs.',
+          icon: Icons.lock_clock_rounded,
+          tone: _AppNoticeTone.warning,
+        ),
+      );
+    });
   }
 
   Future<void> _signOut() async {
@@ -427,19 +523,14 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
       _playerStats.value = PlayerStats.empty();
       _sessions.value = const <GameSession>[];
       _leaderboardUsers.value = const <AppUser>[];
-      _showNotice(
-        const _AppNotice(
-          title: 'Signed out',
-          message: 'Your shared account session is closed on this device.',
-          icon: Icons.logout_rounded,
-        ),
-      );
+      _clearNotice();
     });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(_fullscreenObserver);
+    widget.clerkAuthState?.removeListener(_handleClerkAuthStateChanged);
     _ownedApiClient?.close();
     _currentUser.dispose();
     _playerStats.dispose();
@@ -464,10 +555,12 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
               : _currentUser.value == null
               ? Stack(
                   children: [
-                    _LocalAuthScreen(
-                      authRepository: _authRepository,
-                      onAuthenticated: _handleSignedIn,
-                    ),
+                    widget.clerkAuthState != null
+                        ? const _ClerkAuthScreen()
+                        : _LocalAuthScreen(
+                            authRepository: _authRepository,
+                            onAuthenticated: _handleSignedIn,
+                          ),
                     SafeArea(
                       child: Align(
                         alignment: Alignment.topCenter,
@@ -553,7 +646,152 @@ class _SignedInState {
   final List<AppUser> leaderboardUsers;
 }
 
+class _MissingClerkConfigurationApp extends StatelessWidget {
+  const _MissingClerkConfigurationApp();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: const Color(0xFF08111F),
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: 520),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Color(0xFF132238),
+                    borderRadius: BorderRadius.all(Radius.circular(24)),
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Missing Clerk configuration',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        SizedBox(height: 12),
+                        Text(
+                          'Run the app with --dart-define=CLERK_PUBLISHABLE_KEY=pk_... or enable local repositories with --dart-define=USE_LOCAL_DATA=true.',
+                          style: TextStyle(
+                            color: Color(0xFFD2D8E2),
+                            fontSize: 15,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 enum _AuthMode { signIn, signUp }
+
+class _ClerkAuthScreen extends StatelessWidget {
+  const _ClerkAuthScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: NeuralTheme.background,
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [NeuralTheme.background, NeuralTheme.backgroundBottom],
+          ),
+        ),
+        child: Stack(
+          children: [
+            const _BackgroundEffects(),
+            SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 460),
+                    child: Container(
+                      padding: const EdgeInsets.all(26),
+                      decoration: BoxDecoration(
+                        color: NeuralTheme.surface.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(
+                          color: NeuralTheme.primary.withValues(alpha: 0.18),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: NeuralTheme.primaryGlow.withValues(
+                              alpha: 0.28,
+                            ),
+                            blurRadius: 32,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'CLERK ACCESS',
+                            style: TextStyle(
+                              color: NeuralTheme.textMuted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                          SizedBox(height: 12),
+                          Text(
+                            'Sign in with your Clerk account',
+                            style: TextStyle(
+                              color: NeuralTheme.text,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -1.0,
+                            ),
+                          ),
+                          SizedBox(height: 10),
+                          Text(
+                            'Authentication now runs through Clerk. Once you sign in, scores and recent runs continue syncing through the shared backend.',
+                            style: TextStyle(
+                              color: NeuralTheme.textMuted,
+                              fontSize: 14,
+                              height: 1.5,
+                            ),
+                          ),
+                          SizedBox(height: 24),
+                          ClerkAuthentication(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _LocalAuthScreen extends StatefulWidget {
   const _LocalAuthScreen({
