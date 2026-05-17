@@ -3654,10 +3654,12 @@ class _GameScreenState extends State<GameScreen> {
   int _bestRun = 0;
   int _round = 0;
   int _inputIndex = 0;
+  int _tapFeedbackVersion = 0;
   double _sequenceProgress = 0;
   double _timerProgress = 1;
   GamePhase _phase = GamePhase.booting;
   bool _isSubmitting = false;
+  bool _isResolvingFailureTap = false;
   bool _didRecordCurrentSession = false;
   bool? _lastAppliedFocusMode;
   DateTime? _sessionStartedAt;
@@ -3705,6 +3707,8 @@ class _GameScreenState extends State<GameScreen> {
         _phase = GamePhase.booting;
       });
     }
+    _tapFeedbackVersion += 1;
+    _isResolvingFailureTap = false;
     _didRecordCurrentSession = false;
     _sessionStartedAt = startedAt;
 
@@ -3734,6 +3738,7 @@ class _GameScreenState extends State<GameScreen> {
       _sequence.add(nextTile);
       _round = _sequence.length;
       _inputIndex = 0;
+      _tapFeedbackVersion += 1;
       _sequenceProgress = 0;
       _timerProgress = 1;
       _highlightedTile = null;
@@ -3857,55 +3862,55 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Future<void> _handleTileTap(int index) async {
-    if (_isSubmitting || _phase != GamePhase.input) {
+    if (_isSubmitting || _isResolvingFailureTap || _phase != GamePhase.input) {
       return;
     }
 
     final int session = _sessionId;
     final int expectedTile = _sequence[_inputIndex];
     final bool isCorrectTile = index == expectedTile;
+    final int nextInputIndex = _inputIndex + 1;
     final bool completesRound =
-        isCorrectTile && _inputIndex + 1 >= _sequence.length;
+        isCorrectTile && nextInputIndex >= _sequence.length;
+    final int feedbackVersion = _tapFeedbackVersion + 1;
     _cancelInputTimer();
 
     setState(() {
+      _tapFeedbackVersion = feedbackVersion;
       _pressedTile = index;
       _errorTile = null;
+      _highlightedTile = null;
+      if (isCorrectTile) {
+        _inputIndex = nextInputIndex;
+        _sequenceProgress = nextInputIndex / _sequence.length;
+        _score += widget.mode.pointsPerStep;
+        _streak += 1;
+        _bestRun = math.max(_bestRun, _streak);
+        _timerProgress = 1;
+        if (completesRound) {
+          _score += widget.mode.roundBonus;
+          _phase = GamePhase.roundClear;
+        }
+      }
     });
     _playTapHaptic();
     unawaited(
       _soundController.playTap(
-        streak: _streak + (isCorrectTile ? 1 : 0),
+        streak: _streak,
         completedRound: completesRound,
         enabled: widget.settings.soundEnabled,
         masterVolume: widget.settings.effectiveSoundLevel,
       ),
     );
 
-    await Future<void>.delayed(
-      widget.settings.tuneDuration(
-        Duration(milliseconds: widget.mode == GameMode.focus ? 150 : 100),
-        reducedFactor: 0.72,
-        minMilliseconds: 70,
-      ),
-    );
-    if (!_sessionIsActive(session) || _phase != GamePhase.input) {
-      return;
-    }
-
     if (index != expectedTile) {
+      _isResolvingFailureTap = true;
       setState(() {
         _pressedTile = null;
         _errorTile = index;
       });
       _playFailureHaptic();
-      await Future<void>.delayed(
-        widget.settings.tuneDuration(
-          const Duration(milliseconds: 180),
-          reducedFactor: 0.72,
-          minMilliseconds: 90,
-        ),
-      );
+      await Future<void>.delayed(_errorFlashDuration);
       if (_sessionIsActive(session)) {
         await _handleFailure(
           summary: 'Wrong tile',
@@ -3916,48 +3921,32 @@ class _GameScreenState extends State<GameScreen> {
       return;
     }
 
-    final int nextInputIndex = _inputIndex + 1;
-    final bool completedRound = nextInputIndex >= _sequence.length;
+    _playSuccessHaptic(completedRound: completesRound);
 
-    setState(() {
-      _pressedTile = null;
-      _highlightedTile = expectedTile;
-      _inputIndex = nextInputIndex;
-      _sequenceProgress = nextInputIndex / _sequence.length;
-      _score += widget.mode.pointsPerStep;
-      _streak += 1;
-      _bestRun = math.max(_bestRun, _streak);
-      if (completedRound) {
-        _score += widget.mode.roundBonus;
-        _phase = GamePhase.roundClear;
-        _timerProgress = 1;
+    if (completesRound) {
+      await _clearPressedTileAfterDelay(
+        session: session,
+        feedbackVersion: feedbackVersion,
+        duration: _tapPressDuration,
+      );
+      if (!_sessionIsActive(session) ||
+          feedbackVersion != _tapFeedbackVersion) {
+        return;
       }
-    });
-    _playSuccessHaptic(completedRound: completedRound);
-
-    await Future<void>.delayed(
-      widget.settings.tuneDuration(
-        const Duration(milliseconds: 140),
-        reducedFactor: 0.7,
-        minMilliseconds: 70,
-      ),
-    );
-    if (!_sessionIsActive(session)) {
-      return;
-    }
-
-    setState(() {
-      _highlightedTile = null;
-    });
-
-    if (completedRound) {
       await Future<void>.delayed(_roundLeadInDuration);
-      if (_sessionIsActive(session)) {
+      if (_sessionIsActive(session) && feedbackVersion == _tapFeedbackVersion) {
         await _startNextRound(session);
       }
       return;
     }
 
+    unawaited(
+      _clearPressedTileAfterDelay(
+        session: session,
+        feedbackVersion: feedbackVersion,
+        duration: _tapPressDuration,
+      ),
+    );
     _armInputTimer(session);
   }
 
@@ -3971,6 +3960,8 @@ class _GameScreenState extends State<GameScreen> {
     }
 
     _isSubmitting = true;
+    _isResolvingFailureTap = false;
+    _tapFeedbackVersion += 1;
     _didRecordCurrentSession = true;
     _cancelInputTimer();
     setState(() {
@@ -4024,6 +4015,35 @@ class _GameScreenState extends State<GameScreen> {
       Navigator.of(context).pop();
     }
   }
+
+  Future<void> _clearPressedTileAfterDelay({
+    required int session,
+    required int feedbackVersion,
+    required Duration duration,
+  }) async {
+    await Future<void>.delayed(duration);
+    if (!_sessionIsActive(session) ||
+        feedbackVersion != _tapFeedbackVersion ||
+        !mounted) {
+      return;
+    }
+
+    setState(() {
+      _pressedTile = null;
+    });
+  }
+
+  Duration get _tapPressDuration => widget.settings.tuneDuration(
+    Duration(milliseconds: widget.mode == GameMode.focus ? 150 : 100),
+    reducedFactor: 0.72,
+    minMilliseconds: 70,
+  );
+
+  Duration get _errorFlashDuration => widget.settings.tuneDuration(
+    const Duration(milliseconds: 180),
+    reducedFactor: 0.72,
+    minMilliseconds: 90,
+  );
 
   Duration get _flashDuration => widget.settings.tuneDuration(
     widget.mode.flashDuration,
