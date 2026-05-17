@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -8,6 +9,8 @@ import 'api/api_client.dart';
 import 'api/api_errors.dart';
 import 'app_environment.dart';
 import 'auth/auth_models.dart';
+import 'auth/clerk_auth_repository.dart';
+import 'auth/clerk_auth_token_store.dart';
 import 'auth/auth_repository.dart';
 import 'auth/local_auth_repository.dart';
 import 'auth/remote_auth_repository.dart';
@@ -24,7 +27,26 @@ import 'stats/stats_repository.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _configureFullscreenUi();
-  runApp(const NeuralRecallApp());
+  runApp(_buildRootApp());
+}
+
+Widget _buildRootApp() {
+  if (AppEnvironment.useLocalRepositories) {
+    return const NeuralRecallApp();
+  }
+
+  if (AppEnvironment.clerkPublishableKey.isEmpty) {
+    return const _MissingClerkConfigurationApp();
+  }
+
+  return ClerkAuth(
+    config: ClerkAuthConfig(publishableKey: AppEnvironment.clerkPublishableKey),
+    child: ClerkAuthBuilder(
+      builder: (context, authState) {
+        return NeuralRecallApp(clerkAuthState: authState);
+      },
+    ),
+  );
 }
 
 class NeuralRecallApp extends StatefulWidget {
@@ -33,11 +55,13 @@ class NeuralRecallApp extends StatefulWidget {
     this.authRepository,
     this.statsRepository,
     this.settingsRepository,
+    this.clerkAuthState,
   });
 
   final AuthRepository? authRepository;
   final StatsRepository? statsRepository;
   final SettingsRepository? settingsRepository;
+  final ClerkAuthState? clerkAuthState;
 
   @override
   State<NeuralRecallApp> createState() => _NeuralRecallAppState();
@@ -63,6 +87,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   late final SettingsRepository _settingsRepository;
   ApiClient? _ownedApiClient;
   bool _isLoadingAppState = true;
+  bool _isReconcilingClerkSession = false;
 
   @override
   void initState() {
@@ -72,6 +97,24 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     if (AppEnvironment.useLocalRepositories) {
       _authRepository = widget.authRepository ?? LocalAuthRepository();
       _statsRepository = widget.statsRepository ?? LocalStatsRepository();
+    } else if (widget.clerkAuthState != null) {
+      final ClerkAuthTokenStore tokenStore = ClerkAuthTokenStore(
+        auth: widget.clerkAuthState!,
+      );
+      _ownedApiClient = ApiClient(
+        baseUrl: AppEnvironment.apiBaseUrl,
+        tokenStore: tokenStore,
+      );
+      _authRepository =
+          widget.authRepository ??
+          ClerkAuthRepository(
+            apiClient: _ownedApiClient!,
+            auth: widget.clerkAuthState!,
+          );
+      _statsRepository =
+          widget.statsRepository ??
+          RemoteStatsRepository(apiClient: _ownedApiClient!);
+      widget.clerkAuthState!.addListener(_handleClerkAuthStateChanged);
     } else {
       final SharedPreferencesAuthTokenStore tokenStore =
           SharedPreferencesAuthTokenStore();
@@ -91,6 +134,24 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     }
     WidgetsBinding.instance.addObserver(_fullscreenObserver);
     unawaited(_loadPersistedAppState());
+  }
+
+  void _handleClerkAuthStateChanged() {
+    final ClerkAuthState? authState = widget.clerkAuthState;
+    if (authState == null || _isLoadingAppState || _isReconcilingClerkSession) {
+      return;
+    }
+
+    if (!authState.isSignedIn || authState.user == null) {
+      if (_currentUser.value != null) {
+        _reconcileSignedOutClerkState();
+      }
+      return;
+    }
+
+    if (_currentUser.value == null) {
+      unawaited(_reconcileSignedInClerkState());
+    }
   }
 
   Future<void> _loadPersistedAppState() async {
@@ -395,25 +456,60 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     }
   }
 
+  Future<void> _reconcileSignedInClerkState() async {
+    if (_isReconcilingClerkSession) {
+      return;
+    }
+
+    _isReconcilingClerkSession = true;
+    try {
+      final AppUser? user = await _authRepository.restoreSession();
+      if (user == null || !mounted) {
+        return;
+      }
+      await _handleSignedIn(user);
+    } on ApiUnauthorizedException {
+      await _handleExpiredSession();
+    } finally {
+      _isReconcilingClerkSession = false;
+    }
+  }
+
+  void _reconcileSignedOutClerkState() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _currentUser.value = null;
+      _playerStats.value = PlayerStats.empty();
+      _sessions.value = const <GameSession>[];
+      _leaderboardUsers.value = const <AppUser>[];
+      _clearNotice();
+    });
+  }
+
   Future<void> _handleExpiredSession() async {
     await _authRepository.signOut();
     if (!mounted) {
       return;
     }
 
-    _currentUser.value = null;
-    _playerStats.value = PlayerStats.empty();
-    _sessions.value = const <GameSession>[];
-    _leaderboardUsers.value = const <AppUser>[];
-    _showNotice(
-      const _AppNotice(
-        title: 'Your session expired',
-        message:
-            'Sign in again to continue syncing scores, stats, and recent runs.',
-        icon: Icons.lock_clock_rounded,
-        tone: _AppNoticeTone.warning,
-      ),
-    );
+    setState(() {
+      _currentUser.value = null;
+      _playerStats.value = PlayerStats.empty();
+      _sessions.value = const <GameSession>[];
+      _leaderboardUsers.value = const <AppUser>[];
+      _showNotice(
+        const _AppNotice(
+          title: 'Your session expired',
+          message:
+              'Sign in again to continue syncing scores, stats, and recent runs.',
+          icon: Icons.lock_clock_rounded,
+          tone: _AppNoticeTone.warning,
+        ),
+      );
+    });
   }
 
   Future<void> _signOut() async {
@@ -427,19 +523,14 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
       _playerStats.value = PlayerStats.empty();
       _sessions.value = const <GameSession>[];
       _leaderboardUsers.value = const <AppUser>[];
-      _showNotice(
-        const _AppNotice(
-          title: 'Signed out',
-          message: 'Your shared account session is closed on this device.',
-          icon: Icons.logout_rounded,
-        ),
-      );
+      _clearNotice();
     });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(_fullscreenObserver);
+    widget.clerkAuthState?.removeListener(_handleClerkAuthStateChanged);
     _ownedApiClient?.close();
     _currentUser.dispose();
     _playerStats.dispose();
@@ -464,10 +555,12 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
               : _currentUser.value == null
               ? Stack(
                   children: [
-                    _LocalAuthScreen(
-                      authRepository: _authRepository,
-                      onAuthenticated: _handleSignedIn,
-                    ),
+                    widget.clerkAuthState != null
+                        ? const _ClerkAuthScreen()
+                        : _LocalAuthScreen(
+                            authRepository: _authRepository,
+                            onAuthenticated: _handleSignedIn,
+                          ),
                     SafeArea(
                       child: Align(
                         alignment: Alignment.topCenter,
@@ -553,7 +646,152 @@ class _SignedInState {
   final List<AppUser> leaderboardUsers;
 }
 
+class _MissingClerkConfigurationApp extends StatelessWidget {
+  const _MissingClerkConfigurationApp();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: const Color(0xFF08111F),
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: 520),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Color(0xFF132238),
+                    borderRadius: BorderRadius.all(Radius.circular(24)),
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Missing Clerk configuration',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        SizedBox(height: 12),
+                        Text(
+                          'Run the app with --dart-define=CLERK_PUBLISHABLE_KEY=pk_... or enable local repositories with --dart-define=USE_LOCAL_DATA=true.',
+                          style: TextStyle(
+                            color: Color(0xFFD2D8E2),
+                            fontSize: 15,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 enum _AuthMode { signIn, signUp }
+
+class _ClerkAuthScreen extends StatelessWidget {
+  const _ClerkAuthScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: NeuralTheme.background,
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [NeuralTheme.background, NeuralTheme.backgroundBottom],
+          ),
+        ),
+        child: Stack(
+          children: [
+            const _BackgroundEffects(),
+            SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 460),
+                    child: Container(
+                      padding: const EdgeInsets.all(26),
+                      decoration: BoxDecoration(
+                        color: NeuralTheme.surface.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(
+                          color: NeuralTheme.primary.withValues(alpha: 0.18),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: NeuralTheme.primaryGlow.withValues(
+                              alpha: 0.28,
+                            ),
+                            blurRadius: 32,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'CLERK ACCESS',
+                            style: TextStyle(
+                              color: NeuralTheme.textMuted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                          SizedBox(height: 12),
+                          Text(
+                            'Sign in with your Clerk account',
+                            style: TextStyle(
+                              color: NeuralTheme.text,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -1.0,
+                            ),
+                          ),
+                          SizedBox(height: 10),
+                          Text(
+                            'Authentication now runs through Clerk. Once you sign in, scores and recent runs continue syncing through the shared backend.',
+                            style: TextStyle(
+                              color: NeuralTheme.textMuted,
+                              fontSize: 14,
+                              height: 1.5,
+                            ),
+                          ),
+                          SizedBox(height: 24),
+                          ClerkAuthentication(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _LocalAuthScreen extends StatefulWidget {
   const _LocalAuthScreen({
@@ -3416,10 +3654,12 @@ class _GameScreenState extends State<GameScreen> {
   int _bestRun = 0;
   int _round = 0;
   int _inputIndex = 0;
+  int _tapFeedbackVersion = 0;
   double _sequenceProgress = 0;
   double _timerProgress = 1;
   GamePhase _phase = GamePhase.booting;
   bool _isSubmitting = false;
+  bool _isResolvingFailureTap = false;
   bool _didRecordCurrentSession = false;
   bool? _lastAppliedFocusMode;
   DateTime? _sessionStartedAt;
@@ -3467,6 +3707,8 @@ class _GameScreenState extends State<GameScreen> {
         _phase = GamePhase.booting;
       });
     }
+    _tapFeedbackVersion += 1;
+    _isResolvingFailureTap = false;
     _didRecordCurrentSession = false;
     _sessionStartedAt = startedAt;
 
@@ -3496,6 +3738,7 @@ class _GameScreenState extends State<GameScreen> {
       _sequence.add(nextTile);
       _round = _sequence.length;
       _inputIndex = 0;
+      _tapFeedbackVersion += 1;
       _sequenceProgress = 0;
       _timerProgress = 1;
       _highlightedTile = null;
@@ -3619,55 +3862,55 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Future<void> _handleTileTap(int index) async {
-    if (_isSubmitting || _phase != GamePhase.input) {
+    if (_isSubmitting || _isResolvingFailureTap || _phase != GamePhase.input) {
       return;
     }
 
     final int session = _sessionId;
     final int expectedTile = _sequence[_inputIndex];
     final bool isCorrectTile = index == expectedTile;
+    final int nextInputIndex = _inputIndex + 1;
     final bool completesRound =
-        isCorrectTile && _inputIndex + 1 >= _sequence.length;
+        isCorrectTile && nextInputIndex >= _sequence.length;
+    final int feedbackVersion = _tapFeedbackVersion + 1;
     _cancelInputTimer();
 
     setState(() {
+      _tapFeedbackVersion = feedbackVersion;
       _pressedTile = index;
       _errorTile = null;
+      _highlightedTile = null;
+      if (isCorrectTile) {
+        _inputIndex = nextInputIndex;
+        _sequenceProgress = nextInputIndex / _sequence.length;
+        _score += widget.mode.pointsPerStep;
+        _streak += 1;
+        _bestRun = math.max(_bestRun, _streak);
+        _timerProgress = 1;
+        if (completesRound) {
+          _score += widget.mode.roundBonus;
+          _phase = GamePhase.roundClear;
+        }
+      }
     });
     _playTapHaptic();
     unawaited(
       _soundController.playTap(
-        streak: _streak + (isCorrectTile ? 1 : 0),
+        streak: _streak,
         completedRound: completesRound,
         enabled: widget.settings.soundEnabled,
         masterVolume: widget.settings.effectiveSoundLevel,
       ),
     );
 
-    await Future<void>.delayed(
-      widget.settings.tuneDuration(
-        Duration(milliseconds: widget.mode == GameMode.focus ? 150 : 100),
-        reducedFactor: 0.72,
-        minMilliseconds: 70,
-      ),
-    );
-    if (!_sessionIsActive(session) || _phase != GamePhase.input) {
-      return;
-    }
-
     if (index != expectedTile) {
+      _isResolvingFailureTap = true;
       setState(() {
         _pressedTile = null;
         _errorTile = index;
       });
       _playFailureHaptic();
-      await Future<void>.delayed(
-        widget.settings.tuneDuration(
-          const Duration(milliseconds: 180),
-          reducedFactor: 0.72,
-          minMilliseconds: 90,
-        ),
-      );
+      await Future<void>.delayed(_errorFlashDuration);
       if (_sessionIsActive(session)) {
         await _handleFailure(
           summary: 'Wrong tile',
@@ -3678,48 +3921,32 @@ class _GameScreenState extends State<GameScreen> {
       return;
     }
 
-    final int nextInputIndex = _inputIndex + 1;
-    final bool completedRound = nextInputIndex >= _sequence.length;
+    _playSuccessHaptic(completedRound: completesRound);
 
-    setState(() {
-      _pressedTile = null;
-      _highlightedTile = expectedTile;
-      _inputIndex = nextInputIndex;
-      _sequenceProgress = nextInputIndex / _sequence.length;
-      _score += widget.mode.pointsPerStep;
-      _streak += 1;
-      _bestRun = math.max(_bestRun, _streak);
-      if (completedRound) {
-        _score += widget.mode.roundBonus;
-        _phase = GamePhase.roundClear;
-        _timerProgress = 1;
+    if (completesRound) {
+      await _clearPressedTileAfterDelay(
+        session: session,
+        feedbackVersion: feedbackVersion,
+        duration: _tapPressDuration,
+      );
+      if (!_sessionIsActive(session) ||
+          feedbackVersion != _tapFeedbackVersion) {
+        return;
       }
-    });
-    _playSuccessHaptic(completedRound: completedRound);
-
-    await Future<void>.delayed(
-      widget.settings.tuneDuration(
-        const Duration(milliseconds: 140),
-        reducedFactor: 0.7,
-        minMilliseconds: 70,
-      ),
-    );
-    if (!_sessionIsActive(session)) {
-      return;
-    }
-
-    setState(() {
-      _highlightedTile = null;
-    });
-
-    if (completedRound) {
       await Future<void>.delayed(_roundLeadInDuration);
-      if (_sessionIsActive(session)) {
+      if (_sessionIsActive(session) && feedbackVersion == _tapFeedbackVersion) {
         await _startNextRound(session);
       }
       return;
     }
 
+    unawaited(
+      _clearPressedTileAfterDelay(
+        session: session,
+        feedbackVersion: feedbackVersion,
+        duration: _tapPressDuration,
+      ),
+    );
     _armInputTimer(session);
   }
 
@@ -3733,6 +3960,8 @@ class _GameScreenState extends State<GameScreen> {
     }
 
     _isSubmitting = true;
+    _isResolvingFailureTap = false;
+    _tapFeedbackVersion += 1;
     _didRecordCurrentSession = true;
     _cancelInputTimer();
     setState(() {
@@ -3786,6 +4015,35 @@ class _GameScreenState extends State<GameScreen> {
       Navigator.of(context).pop();
     }
   }
+
+  Future<void> _clearPressedTileAfterDelay({
+    required int session,
+    required int feedbackVersion,
+    required Duration duration,
+  }) async {
+    await Future<void>.delayed(duration);
+    if (!_sessionIsActive(session) ||
+        feedbackVersion != _tapFeedbackVersion ||
+        !mounted) {
+      return;
+    }
+
+    setState(() {
+      _pressedTile = null;
+    });
+  }
+
+  Duration get _tapPressDuration => widget.settings.tuneDuration(
+    Duration(milliseconds: widget.mode == GameMode.focus ? 150 : 100),
+    reducedFactor: 0.72,
+    minMilliseconds: 70,
+  );
+
+  Duration get _errorFlashDuration => widget.settings.tuneDuration(
+    const Duration(milliseconds: 180),
+    reducedFactor: 0.72,
+    minMilliseconds: 90,
+  );
 
   Duration get _flashDuration => widget.settings.tuneDuration(
     widget.mode.flashDuration,

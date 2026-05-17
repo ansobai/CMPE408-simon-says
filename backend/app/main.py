@@ -1,14 +1,23 @@
 from __future__ import annotations
 
+from clerk_backend_api import Clerk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Settings, get_settings
 from .database import Base, create_engine_and_session_factory
+from .dependencies import (
+    SubjectAuthenticator,
+    default_subject_authenticator,
+)
 from .routers import auth_router, stats_router
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    subject_authenticator: SubjectAuthenticator | None = None,
+) -> FastAPI:
   resolved_settings = settings or get_settings()
   engine, session_factory = create_engine_and_session_factory(
       resolved_settings.database_url
@@ -19,6 +28,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
   app.state.settings = resolved_settings
   app.state.engine = engine
   app.state.session_factory = session_factory
+  app.state.clerk_client = (
+      Clerk(bearer_auth=resolved_settings.clerk_secret_key)
+      if resolved_settings.clerk_secret_key
+      else None
+  )
+  app.state.subject_authenticator = (
+      subject_authenticator or default_subject_authenticator
+  )
 
   if resolved_settings.cors_origins:
     app.add_middleware(

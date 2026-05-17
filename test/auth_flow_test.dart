@@ -88,7 +88,7 @@ void main() {
       find.text('Sign in or create a shared player account'),
       findsOneWidget,
     );
-    expect(find.text('Signed out'), findsOneWidget);
+    expect(find.text('Signed out'), findsNothing);
   });
 }
 

@@ -63,7 +63,85 @@ Future<void> _toggleSetting(WidgetTester tester, String label) async {
   fail('Could not find switch for "$label".');
 }
 
-NeuralRecallApp _buildSignedInApp() {
+Finder _boardTileFinder() => find.byWidgetPredicate(
+  (widget) => widget.runtimeType.toString() == '_BoardTile',
+);
+
+int _activeBoardTileIndex(WidgetTester tester) {
+  final List<Widget> tiles = tester.widgetList(_boardTileFinder()).toList();
+  for (int index = 0; index < tiles.length; index++) {
+    final dynamic tile = tiles[index];
+    if (tile.active as bool) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+Future<void> _waitForGameplayInput(WidgetTester tester) async {
+  for (int step = 0; step < 250; step++) {
+    final List<Widget> tiles = tester.widgetList(_boardTileFinder()).toList();
+    if (tiles.isNotEmpty) {
+      final dynamic firstTile = tiles.first;
+      if (firstTile.enabled as bool) {
+        return;
+      }
+    }
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+
+  fail('Game never enabled tile input.');
+}
+
+Future<void> _waitForRoundLabel(WidgetTester tester, String label) async {
+  for (int step = 0; step < 250; step++) {
+    if (find.textContaining(label).evaluate().isNotEmpty) {
+      return;
+    }
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+
+  fail('Round label "$label" never appeared.');
+}
+
+Future<void> _waitForNoActiveBoardTile(WidgetTester tester) async {
+  for (int step = 0; step < 250; step++) {
+    if (_activeBoardTileIndex(tester) == -1) {
+      return;
+    }
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+
+  fail('Board never returned to an idle visual state.');
+}
+
+Future<List<int>> _captureShownSequence(
+  WidgetTester tester,
+  int expectedLength,
+) async {
+  final List<int> seen = <int>[];
+  int? lastActiveIndex;
+
+  for (int step = 0; step < 400 && seen.length < expectedLength; step++) {
+    final int activeIndex = _activeBoardTileIndex(tester);
+    if (activeIndex >= 0) {
+      if (activeIndex != lastActiveIndex) {
+        seen.add(activeIndex);
+        lastActiveIndex = activeIndex;
+      }
+    } else {
+      lastActiveIndex = null;
+    }
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+
+  expect(seen, hasLength(expectedLength));
+  return seen;
+}
+
+NeuralRecallApp _buildSignedInApp({
+  NeuralSettings settings = const NeuralSettings(),
+}) {
   final AppUser user = AppUser(
     id: 1,
     username: 'bara',
@@ -74,7 +152,7 @@ NeuralRecallApp _buildSignedInApp() {
   return NeuralRecallApp(
     authRepository: _SignedInAuthRepository(user),
     statsRepository: const _NoopStatsRepository(),
-    settingsRepository: const _InMemorySettingsRepository(),
+    settingsRepository: _InMemorySettingsRepository(settings),
   );
 }
 
@@ -149,6 +227,47 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
 
     expect(find.text('RESET CURRENT RUN?'), findsNothing);
+    await _disposeGameScreen(tester);
+  });
+
+  testWidgets('focus mode accepts back-to-back correct taps', (
+    WidgetTester tester,
+  ) async {
+    await _setPhoneSurface(tester);
+    await tester.pumpWidget(
+      _buildSignedInApp(
+        settings: const NeuralSettings(
+          reducedMotion: true,
+          soundEnabled: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Easy mode'));
+    await tester.pump();
+
+    final List<int> roundOneSequence = await _captureShownSequence(tester, 1);
+    await _waitForGameplayInput(tester);
+
+    await tester.tap(_boardTileFinder().at(roundOneSequence.first));
+    await tester.pump();
+    await _waitForNoActiveBoardTile(tester);
+
+    final List<int> roundTwoSequence = await _captureShownSequence(tester, 2);
+    await _waitForGameplayInput(tester);
+
+    await tester.tap(_boardTileFinder().at(roundTwoSequence[0]));
+    await tester.pump(const Duration(milliseconds: 10));
+    await tester.tap(_boardTileFinder().at(roundTwoSequence[1]));
+    await tester.pump();
+
+    expect(find.text('Wrong tile'), findsNothing);
+
+    await _waitForRoundLabel(tester, 'R3  |');
+    expect(find.textContaining('R3  |'), findsOneWidget);
+    expect(find.text('Wrong tile'), findsNothing);
+
     await _disposeGameScreen(tester);
   });
 
@@ -238,10 +357,12 @@ class _NoopStatsRepository extends StatsRepository {
 }
 
 class _InMemorySettingsRepository extends SettingsRepository {
-  const _InMemorySettingsRepository();
+  const _InMemorySettingsRepository(this.settings);
+
+  final NeuralSettings settings;
 
   @override
-  Future<NeuralSettings> loadSettings() async => const NeuralSettings();
+  Future<NeuralSettings> loadSettings() async => settings;
 
   @override
   Future<void> saveSettings(NeuralSettings _) async {}

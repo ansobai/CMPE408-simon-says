@@ -59,3 +59,7 @@ test/failures/
 .env.*
 !.env.example
 !backend/.env.example
+
+# TLS certificates for the Nginx edge proxy
+deploy/nginx/certs/*
+!deploy/nginx/certs/.gitkeep

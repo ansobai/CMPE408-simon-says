@@ -2,7 +2,8 @@
 
 Simon Says is a Flutter mobile app.
 
-The app now supports a shared FastAPI/PostgreSQL backend for auth, synced
+The app now supports Clerk-backed authentication plus a shared
+FastAPI/PostgreSQL backend for synced
 sessions, player stats, and the leaderboard.
 
 ## Prerequisites
@@ -45,11 +46,14 @@ Run the API with:
 python -m uvicorn backend.app.main:create_app --factory --reload
 ```
 
-By default the Flutter app expects the API at `http://89.167.98.133:8000`. Override
-it for devices, emulators, or deployed environments with:
+By default the Flutter app expects the API at `https://89.167.98.133`. When you
+run the app against the shared backend, pass both the API URL and your Clerk
+publishable key:
 
 ```bash
-flutter run --dart-define=API_BASE_URL=https://your-api.example.com
+flutter run ^
+  --dart-define=API_BASE_URL=https://your-api.example.com ^
+  --dart-define=CLERK_PUBLISHABLE_KEY=pk_test_your_publishable_key
 ```
 
 If you want to keep using the old local-only repositories for development, add:
@@ -60,10 +64,12 @@ flutter run --dart-define=USE_LOCAL_DATA=true
 
 ## Docker Deployment
 
-The current repo is ready to deploy the shared backend with Docker Compose:
+The current repo is ready to deploy the shared backend with Docker Compose and
+an Nginx TLS edge proxy:
 
-- `api`: FastAPI app
+- `api`: FastAPI app on the internal Docker network
 - `db`: PostgreSQL with a named Docker volume for persistence
+- `nginx`: terminates TLS on `443`, redirects `80` to `443`, and proxies to `api`
 
 The Flutter app itself is still primarily a mobile/desktop client. It is not
 ready for browser deployment yet because runtime code imports `dart:io`, so the
@@ -82,8 +88,21 @@ cp .env.example .env
 Edit `.env` and change at least:
 
 - `POSTGRES_PASSWORD`
-- `JWT_SECRET`
+- `CLERK_SECRET_KEY`
+- `CLERK_AUTHORIZED_PARTIES` if you want Clerk to enforce specific app origins
+- `SERVER_NAME` to the DNS name clients will use, for example `api.example.com`
 - `CORS_ORIGINS` if you later add a browser client
+
+Place your TLS certificate and key at:
+
+```bash
+deploy/nginx/certs/fullchain.pem
+deploy/nginx/certs/privkey.pem
+```
+
+Those files are mounted into the Nginx container and are intentionally ignored by
+Git. The expected production setup is a real certificate for `SERVER_NAME`
+issued by a CA such as Let's Encrypt.
 
 Start the stack:
 
@@ -91,30 +110,37 @@ Start the stack:
 docker compose up -d --build
 ```
 
-Check that both services are healthy:
+Check that the services are healthy:
 
 ```bash
 docker compose ps
 docker compose logs -f api
-curl http://YOUR_SERVER_IP:8000/healthz
+docker compose logs -f nginx
+curl -I http://YOUR_SERVER_DOMAIN/healthz
+curl https://YOUR_SERVER_DOMAIN/healthz
 ```
 
-If your server firewall is enabled, allow the API port:
+If your server firewall is enabled, allow the web ports:
 
 ```bash
-sudo ufw allow 8000/tcp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
 ```
 
 ### Point the Flutter app at the server
 
-Run the app with the remote API URL:
+Run the app with the remote API URL and Clerk publishable key:
 
 ```bash
-flutter run --dart-define=API_BASE_URL=http://YOUR_SERVER_IP:8000
+flutter run ^
+  --dart-define=API_BASE_URL=https://YOUR_SERVER_DOMAIN ^
+  --dart-define=CLERK_PUBLISHABLE_KEY=pk_live_your_publishable_key
 ```
 
-If you later put the API behind a reverse proxy with TLS, switch that URL to
-`https://...`.
+The Flutter client now rejects insecure non-local `http://` API URLs at startup,
+so production deployments must use HTTPS. Plain `http://` is only accepted for
+local development hosts such as `localhost` or Android emulator loopback
+`10.0.2.2`.
 
 ## Library Installation Commands
 
@@ -123,6 +149,7 @@ If you want to add the libraries used by this project manually, run:
 ```bash
 flutter pub add cupertino_icons
 flutter pub add audioplayers
+flutter pub add clerk_flutter
 flutter pub add crypto
 flutter pub add http
 flutter pub add path

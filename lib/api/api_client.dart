@@ -12,13 +12,41 @@ class ApiClient {
     required String baseUrl,
     AuthTokenStore? tokenStore,
     http.Client? httpClient,
-  }) : _baseUri = Uri.parse(baseUrl.endsWith('/') ? baseUrl : '$baseUrl/'),
+  }) : _baseUri = _normalizeBaseUri(baseUrl),
        _tokenStore = tokenStore,
        _httpClient = httpClient ?? http.Client();
 
   final Uri _baseUri;
   final AuthTokenStore? _tokenStore;
   final http.Client _httpClient;
+
+  static Uri _normalizeBaseUri(String baseUrl) {
+    final Uri uri = Uri.parse(baseUrl.endsWith('/') ? baseUrl : '$baseUrl/');
+    if (_isSecureRemoteUri(uri)) {
+      return uri;
+    }
+
+    throw ArgumentError.value(
+      baseUrl,
+      'baseUrl',
+      'Remote API URLs must use HTTPS. Plain HTTP is only allowed for local development hosts.',
+    );
+  }
+
+  static bool _isSecureRemoteUri(Uri uri) {
+    if (uri.scheme == 'https') {
+      return true;
+    }
+    if (uri.scheme != 'http') {
+      return false;
+    }
+
+    final String host = uri.host.toLowerCase();
+    return host == 'localhost' ||
+        host == '127.0.0.1' ||
+        host == '::1' ||
+        host == '10.0.2.2';
+  }
 
   Future<Map<String, dynamic>> getJson(
     String path, {

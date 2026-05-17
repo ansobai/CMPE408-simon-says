@@ -16,14 +16,10 @@ class SessionEndReason(str, Enum):
   timed_out = "timedOut"
 
 
-class RegisterRequest(BaseModel):
-  username: str
-  password: str
-
-
-class LoginRequest(BaseModel):
-  username: str
-  password: str
+class SyncUserRequest(BaseModel):
+  username: str | None = None
+  name: str | None = None
+  email: str | None = None
 
 
 class UserResponse(BaseModel):
@@ -39,16 +35,6 @@ class UserResponse(BaseModel):
   @field_serializer("created_at", "updated_at", "last_played_at")
   def serialize_datetimes(self, value: datetime | None) -> str | None:
     return _serialize_datetime(value)
-
-
-class AuthResponse(BaseModel):
-  access_token: str
-  token_type: str = "bearer"
-  user: UserResponse
-
-
-class LogoutResponse(BaseModel):
-  success: bool = True
 
 
 class SessionCreateRequest(BaseModel):
