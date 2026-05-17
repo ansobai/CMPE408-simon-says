@@ -7,9 +7,8 @@ class Settings(BaseSettings):
   database_url: str = (
       "postgresql+psycopg://postgres:postgres@localhost:5432/simon_says"
   )
-  jwt_secret: str = "change-me"
-  jwt_algorithm: str = "HS256"
-  access_token_expire_minutes: int = 60 * 24 * 7
+  clerk_secret_key: str = ""
+  clerk_authorized_parties: list[str] = []
   cors_origins: list[str] = ["*"]
   leaderboard_default_limit: int = 25
   leaderboard_max_limit: int = 100
