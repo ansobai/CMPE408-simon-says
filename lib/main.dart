@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:clerk_auth/clerk_auth.dart' as clerk;
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -704,90 +705,1264 @@ class _MissingClerkConfigurationApp extends StatelessWidget {
 
 enum _AuthMode { signIn, signUp }
 
-class _ClerkAuthScreen extends StatelessWidget {
+enum _ClerkAuthMode { signIn, signUp }
+
+class _ClerkAuthScreen extends StatefulWidget {
   const _ClerkAuthScreen();
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: NeuralTheme.background,
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [NeuralTheme.background, NeuralTheme.backgroundBottom],
-          ),
+  State<_ClerkAuthScreen> createState() => _ClerkAuthScreenState();
+}
+
+class _ClerkAuthScreenState extends State<_ClerkAuthScreen> {
+  final TextEditingController _signInIdentifierController =
+      TextEditingController();
+  final TextEditingController _signInPasswordController =
+      TextEditingController();
+  final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _lastNameController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _signUpEmailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _signUpPasswordController =
+      TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+  final TextEditingController _verificationCodeController =
+      TextEditingController();
+
+  _ClerkAuthMode _mode = _ClerkAuthMode.signIn;
+  bool _isSubmitting = false;
+  bool _awaitingEmailVerification = false;
+  bool _acceptedTerms = false;
+  String? _errorMessage;
+  String? _infoMessage;
+
+  @override
+  void dispose() {
+    _signInIdentifierController.dispose();
+    _signInPasswordController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _usernameController.dispose();
+    _signUpEmailController.dispose();
+    _phoneController.dispose();
+    _signUpPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    _verificationCodeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _switchMode(_ClerkAuthMode mode) async {
+    if (_mode == mode) {
+      return;
+    }
+
+    setState(() {
+      _mode = mode;
+      _awaitingEmailVerification = false;
+      _errorMessage = null;
+      _infoMessage = null;
+      _verificationCodeController.clear();
+    });
+
+    await ClerkAuth.of(context, listen: false).resetClient();
+  }
+
+  void _recordClerkError(clerk.ClerkError error) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _errorMessage = _formatClerkError(error);
+      _infoMessage = null;
+    });
+  }
+
+  String _formatClerkError(clerk.ClerkError error) {
+    final String collectionMessage = error.errors?.errorMessage.trim() ?? '';
+    if (collectionMessage.isNotEmpty && !collectionMessage.contains('{arg}')) {
+      return collectionMessage;
+    }
+
+    final String argument = error.argument?.trim() ?? '';
+    if (argument.isNotEmpty) {
+      return argument;
+    }
+
+    final String renderedMessage = error.toString().trim();
+    if (renderedMessage.isNotEmpty && !renderedMessage.contains('{arg}')) {
+      return renderedMessage;
+    }
+
+    final String rawMessage = error.message.trim();
+    if (rawMessage.isNotEmpty && !rawMessage.contains('{arg}')) {
+      return rawMessage;
+    }
+
+    return 'The authentication request failed. Review the form and try again.';
+  }
+
+  bool _isAttributeEnabled(
+    ClerkAuthState authState,
+    clerk.UserAttribute attribute,
+  ) {
+    return authState.env.user.attributes[attribute]?.isEnabled ?? false;
+  }
+
+  bool _isAttributeRequired(
+    ClerkAuthState authState,
+    clerk.UserAttribute attribute,
+  ) {
+    return authState.env.user.attributes[attribute]?.isRequired ?? false;
+  }
+
+  bool _supportsGoogle(ClerkAuthState authState) {
+    return authState.env.socialConnections.any(
+      (connection) =>
+          connection.strategy.provider == clerk.Strategy.oauthGoogle.provider,
+    );
+  }
+
+  bool _emailNeedsVerification(ClerkAuthState authState) {
+    final clerk.SignUp? signUp = authState.signUp;
+    return signUp?.unverified(clerk.Field.emailAddress) == true ||
+        signUp?.awaiting(clerk.Field.emailAddress) == true;
+  }
+
+  String _verificationDestination(ClerkAuthState authState) {
+    final String email = _signUpEmailController.text.trim();
+    if (email.isNotEmpty) {
+      return email;
+    }
+    return authState.signUp?.emailAddress ?? 'your inbox';
+  }
+
+  String _passwordHint(clerk.PasswordSettings settings) {
+    final List<String> parts = <String>[
+      if (settings.minLength > 0) '${settings.minLength}+ characters',
+      if (settings.requireUppercase) '1 uppercase',
+      if (settings.requireLowercase) '1 lowercase',
+      if (settings.requireNumbers) '1 number',
+      if (settings.requireSpecialChar) '1 symbol',
+    ];
+    return parts.isEmpty ? 'Use a strong password.' : parts.join('  •  ');
+  }
+
+  String? _validateSignUp(ClerkAuthState authState) {
+    if (_isAttributeRequired(authState, clerk.UserAttribute.firstName) &&
+        _firstNameController.text.trim().isEmpty) {
+      return 'First name is required.';
+    }
+    if (_isAttributeRequired(authState, clerk.UserAttribute.lastName) &&
+        _lastNameController.text.trim().isEmpty) {
+      return 'Last name is required.';
+    }
+    if (_isAttributeRequired(authState, clerk.UserAttribute.username) &&
+        _usernameController.text.trim().isEmpty) {
+      return 'Username is required.';
+    }
+    if (_isAttributeRequired(authState, clerk.UserAttribute.emailAddress) &&
+        _signUpEmailController.text.trim().isEmpty) {
+      return 'Email address is required.';
+    }
+    if (_isAttributeRequired(authState, clerk.UserAttribute.phoneNumber) &&
+        _phoneController.text.trim().isEmpty) {
+      return 'Phone number is required.';
+    }
+    if (_isAttributeEnabled(authState, clerk.UserAttribute.password)) {
+      final String? passwordError = authState.checkPassword(
+        _signUpPasswordController.text,
+        _confirmPasswordController.text,
+        context,
+      );
+      if (passwordError != null) {
+        return passwordError;
+      }
+    }
+    if (authState.env.user.signUp.legalConsentEnabled && !_acceptedTerms) {
+      return 'You need to accept the terms to create an account.';
+    }
+    return null;
+  }
+
+  Future<void> _submitSignIn(ClerkAuthState authState) async {
+    final String identifier = _signInIdentifierController.text.trim();
+    final String password = _signInPasswordController.text;
+    if (identifier.isEmpty || password.isEmpty) {
+      setState(() {
+        _errorMessage = 'Enter your email or username and password.';
+        _infoMessage = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+      _infoMessage = null;
+    });
+
+    try {
+      await authState.safelyCall(
+        context,
+        () => authState.attemptSignIn(
+          strategy: clerk.Strategy.password,
+          identifier: identifier,
+          password: password,
         ),
-        child: Stack(
-          children: [
-            const _BackgroundEffects(),
-            SafeArea(
-              child: Center(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 460),
-                    child: Container(
-                      padding: const EdgeInsets.all(26),
-                      decoration: BoxDecoration(
-                        color: NeuralTheme.surface.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(
-                          color: NeuralTheme.primary.withValues(alpha: 0.18),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: NeuralTheme.primaryGlow.withValues(
-                              alpha: 0.28,
-                            ),
-                            blurRadius: 32,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                      child: const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'CLERK ACCESS',
-                            style: TextStyle(
-                              color: NeuralTheme.textMuted,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1.1,
-                            ),
-                          ),
-                          SizedBox(height: 12),
-                          Text(
-                            'Sign in with your Clerk account',
-                            style: TextStyle(
-                              color: NeuralTheme.text,
-                              fontSize: 28,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -1.0,
-                            ),
-                          ),
-                          SizedBox(height: 10),
-                          Text(
-                            'Authentication now runs through Clerk. Once you sign in, scores and recent runs continue syncing through the shared backend.',
-                            style: TextStyle(
-                              color: NeuralTheme.textMuted,
-                              fontSize: 14,
-                              height: 1.5,
-                            ),
-                          ),
-                          SizedBox(height: 24),
-                          ClerkAuthentication(),
-                        ],
-                      ),
+        onError: _recordClerkError,
+      );
+
+      if (!mounted || authState.user != null) {
+        return;
+      }
+
+      if (authState.signIn?.needsFactor == true &&
+          authState.signIn?.canUsePassword == false) {
+        setState(() {
+          _errorMessage =
+              'This account needs a different sign-in factor than password.';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _prepareEmailVerification(
+    ClerkAuthState authState, {
+    bool resend = false,
+  }) async {
+    if (authState.env.supportsEmailCode) {
+      await authState.safelyCall(
+        context,
+        () => authState.attemptSignUp(strategy: clerk.Strategy.emailCode),
+        onError: _recordClerkError,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _awaitingEmailVerification = true;
+        _errorMessage = null;
+        _infoMessage = resend
+            ? 'A fresh verification code was sent to ${_verificationDestination(authState)}.'
+            : 'Enter the six-digit code sent to ${_verificationDestination(authState)}.';
+      });
+      return;
+    }
+
+    if (authState.env.supportsEmailLink) {
+      final Uri? redirectUri = authState.emailVerificationRedirectUri(context);
+      await authState.safelyCall(
+        context,
+        () => authState.attemptSignUp(
+          strategy: clerk.Strategy.emailLink,
+          redirectUrl: redirectUri?.toString(),
+        ),
+        onError: _recordClerkError,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _awaitingEmailVerification = true;
+        _errorMessage = null;
+        _infoMessage =
+            'Check ${_verificationDestination(authState)} for the secure verification link.';
+      });
+      return;
+    }
+
+    setState(() {
+      _awaitingEmailVerification = true;
+      _errorMessage = null;
+      _infoMessage = 'Verify your email to finish creating your account.';
+    });
+  }
+
+  Future<void> _submitSignUp(ClerkAuthState authState) async {
+    final String? validationError = _validateSignUp(authState);
+    if (validationError != null) {
+      setState(() {
+        _errorMessage = validationError;
+        _infoMessage = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+      _infoMessage = null;
+    });
+
+    try {
+      await authState.safelyCall(
+        context,
+        () => authState.attemptSignUp(
+          strategy: clerk.Strategy.password,
+          firstName:
+              _isAttributeEnabled(authState, clerk.UserAttribute.firstName)
+              ? _firstNameController.text.trim()
+              : null,
+          lastName: _isAttributeEnabled(authState, clerk.UserAttribute.lastName)
+              ? _lastNameController.text.trim()
+              : null,
+          username: _isAttributeEnabled(authState, clerk.UserAttribute.username)
+              ? _usernameController.text.trim()
+              : null,
+          emailAddress:
+              _isAttributeEnabled(authState, clerk.UserAttribute.emailAddress)
+              ? _signUpEmailController.text.trim()
+              : null,
+          phoneNumber:
+              _isAttributeEnabled(authState, clerk.UserAttribute.phoneNumber)
+              ? _phoneController.text.trim()
+              : null,
+          password: _isAttributeEnabled(authState, clerk.UserAttribute.password)
+              ? _signUpPasswordController.text
+              : null,
+          passwordConfirmation:
+              _isAttributeEnabled(authState, clerk.UserAttribute.password)
+              ? _confirmPasswordController.text
+              : null,
+          legalAccepted: authState.env.user.signUp.legalConsentEnabled
+              ? _acceptedTerms
+              : null,
+        ),
+        onError: _recordClerkError,
+      );
+
+      if (!mounted || authState.user != null) {
+        return;
+      }
+
+      if (_emailNeedsVerification(authState)) {
+        await _prepareEmailVerification(authState);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _submitVerificationCode(ClerkAuthState authState) async {
+    final String code = _verificationCodeController.text.trim();
+    if (code.length != clerk.Strategy.numericalCodeLength) {
+      setState(() {
+        _errorMessage = 'Enter the six-digit code from your email.';
+        _infoMessage = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+      _infoMessage = null;
+    });
+
+    try {
+      await authState.safelyCall(
+        context,
+        () => authState.attemptSignUp(
+          strategy: clerk.Strategy.emailCode,
+          code: code,
+        ),
+        onError: _recordClerkError,
+      );
+
+      if (!mounted || authState.user != null) {
+        return;
+      }
+
+      if (authState.signUp?.isTransferable == true) {
+        await authState.safelyCall(
+          context,
+          authState.transfer,
+          onError: _recordClerkError,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _submitSocial(ClerkAuthState authState) async {
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+      _infoMessage = null;
+    });
+
+    try {
+      if (_mode == _ClerkAuthMode.signIn) {
+        await authState.ssoSignIn(
+          context,
+          clerk.Strategy.oauthGoogle,
+          onError: _recordClerkError,
+        );
+      } else {
+        await authState.ssoSignUp(
+          context,
+          clerk.Strategy.oauthGoogle,
+          onError: _recordClerkError,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildSignInForm(ClerkAuthState authState) {
+    return Column(
+      key: const ValueKey<String>('sign-in-form'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _AuthTextField(
+          controller: _signInIdentifierController,
+          label: 'Email or username',
+          hint: 'you@example.com',
+          textInputAction: TextInputAction.next,
+          keyboardType: TextInputType.emailAddress,
+        ),
+        const SizedBox(height: 16),
+        _AuthTextField(
+          controller: _signInPasswordController,
+          label: 'Password',
+          hint: 'Enter your password',
+          obscureText: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _submitSignIn(authState),
+        ),
+        const SizedBox(height: 24),
+        _AuthPrimaryButton(
+          label: _isSubmitting ? 'Signing in...' : 'Sign in',
+          onPressed: _isSubmitting ? null : () => _submitSignIn(authState),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSignUpForm(ClerkAuthState authState) {
+    final clerk.PasswordSettings passwordSettings =
+        authState.env.user.passwordSettings;
+
+    return Column(
+      key: const ValueKey<String>('sign-up-form'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_isAttributeEnabled(authState, clerk.UserAttribute.firstName) ||
+            _isAttributeEnabled(authState, clerk.UserAttribute.lastName))
+          Row(
+            children: [
+              if (_isAttributeEnabled(authState, clerk.UserAttribute.firstName))
+                Expanded(
+                  child: _AuthTextField(
+                    controller: _firstNameController,
+                    label: 'First name',
+                    hint: 'Anas',
+                    textInputAction: TextInputAction.next,
+                  ),
+                ),
+              if (_isAttributeEnabled(
+                    authState,
+                    clerk.UserAttribute.firstName,
+                  ) &&
+                  _isAttributeEnabled(authState, clerk.UserAttribute.lastName))
+                const SizedBox(width: 14),
+              if (_isAttributeEnabled(authState, clerk.UserAttribute.lastName))
+                Expanded(
+                  child: _AuthTextField(
+                    controller: _lastNameController,
+                    label: 'Last name',
+                    hint: 'Khan',
+                    textInputAction: TextInputAction.next,
+                  ),
+                ),
+            ],
+          ),
+        if (_isAttributeEnabled(authState, clerk.UserAttribute.firstName) ||
+            _isAttributeEnabled(authState, clerk.UserAttribute.lastName))
+          const SizedBox(height: 16),
+        if (_isAttributeEnabled(authState, clerk.UserAttribute.username)) ...[
+          _AuthTextField(
+            controller: _usernameController,
+            label: 'Username',
+            hint: 'simonchamp',
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (_isAttributeEnabled(
+          authState,
+          clerk.UserAttribute.emailAddress,
+        )) ...[
+          _AuthTextField(
+            controller: _signUpEmailController,
+            label: 'Email address',
+            hint: 'you@example.com',
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (_isAttributeEnabled(
+          authState,
+          clerk.UserAttribute.phoneNumber,
+        )) ...[
+          _AuthTextField(
+            controller: _phoneController,
+            label: 'Phone number',
+            hint: '+966 5X XXX XXXX',
+            keyboardType: TextInputType.phone,
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (_isAttributeEnabled(authState, clerk.UserAttribute.password)) ...[
+          _AuthTextField(
+            controller: _signUpPasswordController,
+            label: 'Password',
+            hint: 'Create a password',
+            obscureText: true,
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _passwordHint(passwordSettings),
+            style: const TextStyle(
+              color: NeuralTheme.textDim,
+              fontSize: 12,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _AuthTextField(
+            controller: _confirmPasswordController,
+            label: 'Confirm password',
+            hint: 'Repeat your password',
+            obscureText: true,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _submitSignUp(authState),
+          ),
+          const SizedBox(height: 18),
+        ],
+        if (authState.env.user.signUp.legalConsentEnabled) ...[
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _acceptedTerms = !_acceptedTerms),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 20,
+                  height: 20,
+                  margin: const EdgeInsets.only(top: 2),
+                  decoration: BoxDecoration(
+                    color: _acceptedTerms
+                        ? NeuralTheme.primarySoft
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: _acceptedTerms
+                          ? NeuralTheme.primarySoft
+                          : NeuralTheme.outline.withValues(alpha: 0.65),
+                    ),
+                  ),
+                  child: _acceptedTerms
+                      ? const Icon(
+                          Icons.check_rounded,
+                          size: 14,
+                          color: Color(0xFF071014),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'I agree to the terms and privacy policy for this workspace.',
+                    style: TextStyle(
+                      color: NeuralTheme.textMuted,
+                      fontSize: 13,
+                      height: 1.45,
                     ),
                   ),
                 ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+        ],
+        _AuthPrimaryButton(
+          label: _isSubmitting ? 'Creating account...' : 'Create account',
+          onPressed: _isSubmitting ? null : () => _submitSignUp(authState),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVerificationForm(ClerkAuthState authState) {
+    return Column(
+      key: const ValueKey<String>('verify-email-form'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: NeuralTheme.surfaceHighest.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: NeuralTheme.outline.withValues(alpha: 0.22),
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: NeuralTheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.mark_email_read_rounded,
+                  color: NeuralTheme.primarySoft,
+                ),
               ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  'We sent a verification code to ${_verificationDestination(authState)}.',
+                  style: const TextStyle(
+                    color: NeuralTheme.textMuted,
+                    fontSize: 14,
+                    height: 1.45,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        if (authState.env.supportsEmailCode) ...[
+          _AuthTextField(
+            controller: _verificationCodeController,
+            label: 'Verification code',
+            hint: '123456',
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _submitVerificationCode(authState),
+          ),
+          const SizedBox(height: 20),
+          _AuthPrimaryButton(
+            label: _isSubmitting ? 'Verifying...' : 'Verify email',
+            onPressed: _isSubmitting
+                ? null
+                : () => _submitVerificationCode(authState),
+          ),
+          const SizedBox(height: 12),
+          _AuthSecondaryButton(
+            label: 'Send a new code',
+            onPressed: _isSubmitting
+                ? null
+                : () => _prepareEmailVerification(authState, resend: true),
+          ),
+        ] else ...[
+          _AuthSecondaryButton(
+            label: 'Send verification link again',
+            onPressed: _isSubmitting
+                ? null
+                : () => _prepareEmailVerification(authState, resend: true),
+          ),
+        ],
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: _isSubmitting
+              ? null
+              : () async {
+                  setState(() {
+                    _awaitingEmailVerification = false;
+                    _errorMessage = null;
+                    _infoMessage = null;
+                    _verificationCodeController.clear();
+                  });
+                  await ClerkAuth.of(context, listen: false).resetClient();
+                },
+          style: TextButton.styleFrom(
+            foregroundColor: NeuralTheme.textMuted,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+          child: const Text('Start over'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAuthPanel(BuildContext context, ClerkAuthState authState) {
+    final clerk.DisplayConfig display = ClerkAuth.displayConfigOf(context);
+    final bool isSignUp = _mode == _ClerkAuthMode.signUp;
+    final bool showGoogle = _supportsGoogle(authState);
+    final bool showVerification = _awaitingEmailVerification && isSignUp;
+    final String appName = display.applicationName.isEmpty
+        ? 'Simon Says'
+        : display.applicationName;
+    final String title = showVerification
+        ? 'Verify email'
+        : isSignUp
+        ? 'Create account'
+        : 'Sign in';
+    final String subtitle = showVerification
+        ? 'Enter the code from your email.'
+        : isSignUp
+        ? 'Use email and password.'
+        : 'Use your account details.';
+
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxWidth: 420),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: NeuralTheme.surface,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: NeuralTheme.outline.withValues(alpha: 0.18)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: NeuralTheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.grid_view_rounded,
+                  color: NeuralTheme.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  appName,
+                  style: const TextStyle(
+                    color: NeuralTheme.text,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (!showVerification) ...[
+            const SizedBox(height: 20),
+            _AuthModeToggle(
+              mode: _mode,
+              onChanged: _isSubmitting ? null : _switchMode,
             ),
           ],
+          const SizedBox(height: 20),
+          Text(
+            title,
+            style: const TextStyle(
+              color: NeuralTheme.text,
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.8,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              color: NeuralTheme.textMuted,
+              fontSize: 14,
+            ),
+          ),
+          if (showGoogle) ...[
+            const SizedBox(height: 18),
+            _AuthSocialButton(
+              label: isSignUp ? 'Continue with Google' : 'Sign in with Google',
+              onPressed: _isSubmitting ? null : () => _submitSocial(authState),
+            ),
+            const SizedBox(height: 18),
+            const _AuthDivider(label: 'or'),
+          ] else ...[
+            const SizedBox(height: 18),
+          ],
+          if (_errorMessage != null || _infoMessage != null) ...[
+            _AuthMessageBanner(
+              errorMessage: _errorMessage,
+              infoMessage: _infoMessage,
+            ),
+            const SizedBox(height: 18),
+          ],
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            child: showVerification
+                ? _buildVerificationForm(authState)
+                : isSignUp
+                ? _buildSignUpForm(authState)
+                : _buildSignInForm(authState),
+          ),
+          const SizedBox(height: 18),
+          if (display.branded || display.showDevmodeWarning)
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              alignment: WrapAlignment.center,
+              children: [
+                if (display.branded)
+                  const _AuthFooterChip(
+                    icon: Icons.verified_user_rounded,
+                    label: 'Secured by Clerk',
+                  ),
+                if (display.showDevmodeWarning)
+                  const _AuthFooterChip(
+                    icon: Icons.developer_mode_rounded,
+                    label: 'Development mode',
+                    warning: true,
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClerkAuthBuilder(
+      builder: (context, authState) {
+        return Scaffold(
+          backgroundColor: NeuralTheme.background,
+          body: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: _buildAuthPanel(context, authState),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _AuthModeToggle extends StatelessWidget {
+  const _AuthModeToggle({required this.mode, required this.onChanged});
+
+  final _ClerkAuthMode mode;
+  final ValueChanged<_ClerkAuthMode>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _AuthToggleButton(
+              label: 'Sign in',
+              selected: mode == _ClerkAuthMode.signIn,
+              onPressed: onChanged == null
+                  ? null
+                  : () => onChanged!(_ClerkAuthMode.signIn),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _AuthToggleButton(
+              label: 'Create account',
+              selected: mode == _ClerkAuthMode.signUp,
+              onPressed: onChanged == null
+                  ? null
+                  : () => onChanged!(_ClerkAuthMode.signUp),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AuthToggleButton extends StatelessWidget {
+  const _AuthToggleButton({
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      onPressed: onPressed,
+      style: FilledButton.styleFrom(
+        backgroundColor: selected
+            ? Colors.white.withValues(alpha: 0.12)
+            : Colors.transparent,
+        foregroundColor: selected ? Colors.white : NeuralTheme.textMuted,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
+class _AuthTextField extends StatelessWidget {
+  const _AuthTextField({
+    required this.controller,
+    required this.label,
+    required this.hint,
+    this.obscureText = false,
+    this.keyboardType,
+    this.textInputAction,
+    this.onSubmitted,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String hint;
+  final bool obscureText;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final ValueChanged<String>? onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: NeuralTheme.text,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.2,
+          ),
         ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          obscureText: obscureText,
+          keyboardType: keyboardType,
+          textInputAction: textInputAction,
+          onSubmitted: onSubmitted,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+          ),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(
+              color: NeuralTheme.textDim,
+              fontSize: 15,
+            ),
+            filled: true,
+            fillColor: Colors.white.withValues(alpha: 0.04),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 18,
+              vertical: 18,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: BorderSide(
+                color: NeuralTheme.outline.withValues(alpha: 0.28),
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: BorderSide(
+                color: NeuralTheme.outline.withValues(alpha: 0.28),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: BorderSide(
+                color: NeuralTheme.primary.withValues(alpha: 0.75),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AuthPrimaryButton extends StatelessWidget {
+  const _AuthPrimaryButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      onPressed: onPressed,
+      style: FilledButton.styleFrom(
+        backgroundColor: NeuralTheme.primarySoft.withValues(alpha: 0.98),
+        foregroundColor: const Color(0xFF061015),
+        disabledBackgroundColor: NeuralTheme.primarySoft.withValues(
+          alpha: 0.35,
+        ),
+        disabledForegroundColor: const Color(
+          0xFF061015,
+        ).withValues(alpha: 0.55),
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _AuthSecondaryButton extends StatelessWidget {
+  const _AuthSecondaryButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.white,
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.10)),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
+class _AuthSocialButton extends StatelessWidget {
+  const _AuthSocialButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.white,
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+        backgroundColor: Colors.white.withValues(alpha: 0.035),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            alignment: Alignment.center,
+            child: const Text(
+              'G',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AuthDivider extends StatelessWidget {
+  const _AuthDivider({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            height: 1,
+            color: Colors.white.withValues(alpha: 0.08),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            label.toUpperCase(),
+            style: const TextStyle(
+              color: NeuralTheme.textDim,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Container(
+            height: 1,
+            color: Colors.white.withValues(alpha: 0.08),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AuthMessageBanner extends StatelessWidget {
+  const _AuthMessageBanner({this.errorMessage, this.infoMessage});
+
+  final String? errorMessage;
+  final String? infoMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isError = errorMessage != null;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isError
+            ? NeuralTheme.errorContainer.withValues(alpha: 0.30)
+            : NeuralTheme.primary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isError
+              ? NeuralTheme.error.withValues(alpha: 0.28)
+              : NeuralTheme.primary.withValues(alpha: 0.24),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isError ? Icons.error_outline_rounded : Icons.info_outline_rounded,
+            color: isError ? NeuralTheme.error : NeuralTheme.primarySoft,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              errorMessage ?? infoMessage ?? '',
+              style: TextStyle(
+                color: isError ? NeuralTheme.error : NeuralTheme.textMuted,
+                fontSize: 13,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AuthFooterChip extends StatelessWidget {
+  const _AuthFooterChip({
+    required this.icon,
+    required this.label,
+    this.warning = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool warning;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color accent = warning
+        ? const Color(0xFFFFB649)
+        : NeuralTheme.textDim;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: accent),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: accent,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -867,191 +2042,191 @@ class _LocalAuthScreenState extends State<_LocalAuthScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: NeuralTheme.background,
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [NeuralTheme.background, NeuralTheme.backgroundBottom],
-          ),
-        ),
-        child: Stack(
-          children: [
-            const _BackgroundEffects(),
-            SafeArea(
-              child: Center(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 460),
-                    child: Container(
-                      padding: const EdgeInsets.all(26),
-                      decoration: BoxDecoration(
-                        color: NeuralTheme.surface.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(
-                          color: NeuralTheme.primary.withValues(alpha: 0.18),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: NeuralTheme.primaryGlow.withValues(
-                              alpha: 0.28,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: NeuralTheme.surface,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: NeuralTheme.outline.withValues(alpha: 0.18),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.18),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              color: NeuralTheme.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(14),
                             ),
-                            blurRadius: 32,
-                            spreadRadius: 2,
+                            child: Icon(
+                              Icons.grid_view_rounded,
+                              color: NeuralTheme.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              'Simon Says',
+                              style: TextStyle(
+                                color: NeuralTheme.text,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.4,
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'SHARED ACCESS',
-                              style: Theme.of(context).textTheme.labelSmall
-                                  ?.copyWith(
-                                    color: NeuralTheme.textDim.withValues(
-                                      alpha: 0.72,
-                                    ),
-                                  ),
-                            ),
-                            const SizedBox(height: 12),
-                            const Text(
-                              'Sign in or create a shared player account',
-                              style: TextStyle(
-                                color: NeuralTheme.text,
-                                fontSize: 28,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -1.0,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            const Text(
-                              'Your access token stays on this device, while scores and stats sync through the shared leaderboard API.',
-                              style: TextStyle(
-                                color: NeuralTheme.textMuted,
-                                fontSize: 14,
-                                height: 1.5,
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _AuthModeButton(
-                                    label: 'SIGN IN',
-                                    selected: _mode == _AuthMode.signIn,
-                                    onTap: () {
-                                      setState(() {
-                                        _mode = _AuthMode.signIn;
-                                        _errorMessage = null;
-                                      });
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: _AuthModeButton(
-                                    label: 'SIGN UP',
-                                    selected: _mode == _AuthMode.signUp,
-                                    onTap: () {
-                                      setState(() {
-                                        _mode = _AuthMode.signUp;
-                                        _errorMessage = null;
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 24),
-                            TextFormField(
-                              controller: _usernameController,
-                              enabled: !_isSubmitting,
-                              textInputAction: TextInputAction.next,
-                              decoration: _authInputDecoration(
-                                label: 'Username',
-                                icon: Icons.person_outline_rounded,
-                              ),
-                              validator: (value) {
-                                if (value == null || value.trim().length < 3) {
-                                  return 'Use at least 3 characters.';
-                                }
-                                return null;
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _AuthModeButton(
+                              label: 'SIGN IN',
+                              selected: _mode == _AuthMode.signIn,
+                              onTap: () {
+                                setState(() {
+                                  _mode = _AuthMode.signIn;
+                                  _errorMessage = null;
+                                });
                               },
                             ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _passwordController,
-                              enabled: !_isSubmitting,
-                              obscureText: true,
-                              onFieldSubmitted: (_) => _submit(),
-                              decoration: _authInputDecoration(
-                                label: 'Password',
-                                icon: Icons.lock_outline_rounded,
-                              ),
-                              validator: (value) {
-                                if (value == null || value.length < 4) {
-                                  return 'Use at least 4 characters.';
-                                }
-                                return null;
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _AuthModeButton(
+                              label: 'SIGN UP',
+                              selected: _mode == _AuthMode.signUp,
+                              onTap: () {
+                                setState(() {
+                                  _mode = _AuthMode.signUp;
+                                  _errorMessage = null;
+                                });
                               },
                             ),
-                            if (_errorMessage != null) ...[
-                              const SizedBox(height: 16),
-                              Text(
-                                _errorMessage!,
-                                style: const TextStyle(
-                                  color: NeuralTheme.error,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 22),
-                            SizedBox(
-                              width: double.infinity,
-                              child: FilledButton(
-                                onPressed: _isSubmitting ? null : _submit,
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: NeuralTheme.primary,
-                                  foregroundColor: NeuralTheme.onAccent,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 18,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                ),
-                                child: _isSubmitting
-                                    ? const SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.2,
-                                        ),
-                                      )
-                                    : Text(
-                                        _mode == _AuthMode.signIn
-                                            ? 'ENTER PROFILE'
-                                            : 'CREATE PROFILE',
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                              ),
-                            ),
-                          ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        _mode == _AuthMode.signIn ? 'Sign in' : 'Create account',
+                        style: const TextStyle(
+                          color: NeuralTheme.text,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.8,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Use username and password.',
+                        style: TextStyle(
+                          color: NeuralTheme.textMuted,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      TextFormField(
+                        controller: _usernameController,
+                        enabled: !_isSubmitting,
+                        textInputAction: TextInputAction.next,
+                        decoration: _authInputDecoration(
+                          label: 'Username',
+                          icon: Icons.person_outline_rounded,
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().length < 3) {
+                            return 'Use at least 3 characters.';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _passwordController,
+                        enabled: !_isSubmitting,
+                        obscureText: true,
+                        onFieldSubmitted: (_) => _submit(),
+                        decoration: _authInputDecoration(
+                          label: 'Password',
+                          icon: Icons.lock_outline_rounded,
+                        ),
+                        validator: (value) {
+                          if (value == null || value.length < 4) {
+                            return 'Use at least 4 characters.';
+                          }
+                          return null;
+                        },
+                      ),
+                      if (_errorMessage != null) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          _errorMessage!,
+                          style: const TextStyle(
+                            color: NeuralTheme.error,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _isSubmitting ? null : _submit,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: NeuralTheme.primary,
+                            foregroundColor: NeuralTheme.onAccent,
+                            padding: const EdgeInsets.symmetric(vertical: 18),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                          child: _isSubmitting
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                  ),
+                                )
+                              : Text(
+                                  _mode == _AuthMode.signIn
+                                      ? 'SIGN IN'
+                                      : 'CREATE ACCOUNT',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -1538,6 +2713,71 @@ class _SignedInProfilePill extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _HeroLogo extends StatelessWidget {
+  const _HeroLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              top: -3,
+              right: -4,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: NeuralTheme.secondary,
+                  borderRadius: BorderRadius.circular(99),
+                  boxShadow: [
+                    BoxShadow(
+                      color: NeuralTheme.secondaryGlow.withValues(alpha: 0.65),
+                      blurRadius: 12,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Icon(
+              Icons.psychology_alt_rounded,
+              size: 84,
+              color: NeuralTheme.primary,
+              shadows: [
+                Shadow(
+                  color: NeuralTheme.primaryGlow.withValues(alpha: 0.7),
+                  blurRadius: 24,
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Text(
+          'NEURAL\nRECALL',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: NeuralTheme.primary,
+            fontSize: 46,
+            height: 0.92,
+            fontWeight: FontWeight.w900,
+            fontStyle: FontStyle.italic,
+            letterSpacing: -2.2,
+            shadows: [
+              Shadow(
+                color: NeuralTheme.primaryGlow.withValues(alpha: 0.7),
+                blurRadius: 18,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -4347,71 +5587,6 @@ class _ScaleToFit extends StatelessWidget {
   }
 }
 
-class _HeroLogo extends StatelessWidget {
-  const _HeroLogo();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned(
-              top: -3,
-              right: -4,
-              child: Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: NeuralTheme.secondary,
-                  borderRadius: BorderRadius.circular(99),
-                  boxShadow: [
-                    BoxShadow(
-                      color: NeuralTheme.secondaryGlow.withValues(alpha: 0.65),
-                      blurRadius: 12,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Icon(
-              Icons.psychology_alt_rounded,
-              size: 84,
-              color: NeuralTheme.primary,
-              shadows: [
-                Shadow(
-                  color: NeuralTheme.primaryGlow.withValues(alpha: 0.7),
-                  blurRadius: 24,
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Text(
-          'NEURAL\nRECALL',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: NeuralTheme.primary,
-            fontSize: 46,
-            height: 0.92,
-            fontWeight: FontWeight.w900,
-            fontStyle: FontStyle.italic,
-            letterSpacing: -2.2,
-            shadows: [
-              Shadow(
-                color: NeuralTheme.primaryGlow.withValues(alpha: 0.7),
-                blurRadius: 18,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _BestStreakCard extends StatelessWidget {
   const _BestStreakCard({required this.bestStreak});
 
@@ -5521,26 +6696,26 @@ class NeuralBottomNav extends StatelessWidget {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         border: Border.all(color: NeuralTheme.primary.withValues(alpha: 0.14)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _NavIcon(
-            icon: Icons.grid_view_rounded,
-            selected: selected == NeuralNavItem.grid,
-            onTap: () => onItemSelected?.call(NeuralNavItem.grid),
-          ),
-          _NavIcon(
-            icon: Icons.stacked_bar_chart_rounded,
-            selected: selected == NeuralNavItem.stats,
-            onTap: () => onItemSelected?.call(NeuralNavItem.stats),
-          ),
-          _NavIcon(
-            icon: Icons.settings_rounded,
-            selected: selected == NeuralNavItem.settings,
-            onTap: () => onItemSelected?.call(NeuralNavItem.settings),
-          ),
-        ],
-      ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _NavIcon(
+              icon: Icons.grid_view_rounded,
+              selected: selected == NeuralNavItem.grid,
+              onTap: () => onItemSelected?.call(NeuralNavItem.grid),
+            ),
+            _NavIcon(
+              icon: Icons.stacked_bar_chart_rounded,
+              selected: selected == NeuralNavItem.stats,
+              onTap: () => onItemSelected?.call(NeuralNavItem.stats),
+            ),
+            _NavIcon(
+              icon: Icons.settings_rounded,
+              selected: selected == NeuralNavItem.settings,
+              onTap: () => onItemSelected?.call(NeuralNavItem.settings),
+            ),
+          ],
+        ),
     );
   }
 }

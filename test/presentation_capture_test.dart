@@ -494,43 +494,6 @@ class _StaticAuthRepository extends AuthRepository {
   }) async => user;
 }
 
-class _StaticStatsRepository extends StatsRepository {
-  const _StaticStatsRepository({
-    required this.sessionsByUser,
-    required this.leaderboardUsers,
-  });
-
-  final Map<int, List<GameSession>> sessionsByUser;
-  final List<AppUser> leaderboardUsers;
-
-  @override
-  Future<List<AppUser>> loadLeaderboardUsers({int? limit}) async {
-    return limit == null
-        ? List<AppUser>.unmodifiable(leaderboardUsers)
-        : leaderboardUsers.take(limit).toList(growable: false);
-  }
-
-  @override
-  Future<PlayerStats> loadStatsForUser(int userId) async {
-    return PlayerStats.fromSessions(
-      sessionsByUser[userId] ?? const <GameSession>[],
-    );
-  }
-
-  @override
-  Future<List<GameSession>> loadSessionsForUser(int userId) async {
-    return List<GameSession>.unmodifiable(
-      sessionsByUser[userId] ?? const <GameSession>[],
-    );
-  }
-
-  @override
-  Future<void> saveCompletedSession({
-    required int userId,
-    required GameSession session,
-  }) async {}
-}
-
 class _EmptyStatsRepository extends StatsRepository {
   const _EmptyStatsRepository();
 
@@ -580,12 +543,10 @@ class _ThrowingStatsRepository extends StatsRepository {
 }
 
 class _MemorySettingsRepository extends SettingsRepository {
-  const _MemorySettingsRepository({this.settings = const NeuralSettings()});
-
-  final NeuralSettings settings;
+  const _MemorySettingsRepository();
 
   @override
-  Future<NeuralSettings> loadSettings() async => settings;
+  Future<NeuralSettings> loadSettings() async => const NeuralSettings();
 
   @override
   Future<void> saveSettings(NeuralSettings settings) async {}

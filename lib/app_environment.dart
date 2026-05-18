@@ -1,7 +1,7 @@
 class AppEnvironment {
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://89.167.98.133',
+    defaultValue: 'https://simonthats.com',
   );
 
   static const String clerkPublishableKey = String.fromEnvironment(

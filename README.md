@@ -46,7 +46,7 @@ Run the API with:
 python -m uvicorn backend.app.main:create_app --factory --reload
 ```
 
-By default the Flutter app expects the API at `https://89.167.98.133`. When you
+By default the Flutter app expects the API at `https://simonthats.com`. When you
 run the app against the shared backend, pass both the API URL and your Clerk
 publishable key:
 
