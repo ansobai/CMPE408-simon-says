@@ -110,7 +110,7 @@ class LocalAuthRepository extends AuthRepository {
       if (error.isUniqueConstraintError()) {
         throw const AuthFailure(
           AuthFailureCode.usernameTaken,
-          'That username is already taken on this device.',
+          'That username is already taken',
         );
       }
       rethrow;
@@ -161,10 +161,10 @@ class LocalAuthRepository extends AuthRepository {
   }
 
   void _validatePassword(String password) {
-    if (password.length < 4) {
+    if (password.length < 8) {
       throw const AuthFailure(
         AuthFailureCode.invalidPassword,
-        'Use a password with at least 4 characters.',
+        'Use a password with at least 8 characters.',
       );
     }
   }
