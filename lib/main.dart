@@ -1193,7 +1193,7 @@ class _ClerkAuthScreenState extends State<_ClerkAuthScreen> {
                   child: _AuthTextField(
                     controller: _lastNameController,
                     label: 'Last name',
-                    hint: 'Khan',
+                    hint: 'ali',
                     textInputAction: TextInputAction.next,
                   ),
                 ),
@@ -2595,7 +2595,7 @@ class MainMenuScreen extends StatelessWidget {
             ),
             child: Stack(
               children: [
-                const _BackgroundEffects(),
+                _BackgroundEffects(),
                 SafeArea(
                   bottom: false,
                   child: Column(
@@ -2666,15 +2666,40 @@ class MainMenuScreen extends StatelessWidget {
 
   Future<void> _openGame(BuildContext context, GameMode mode) {
     return Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => GameScreen(
+      PageRouteBuilder<void>(
+        transitionDuration: _screenTransitionDuration(settings.value),
+        reverseTransitionDuration: _screenTransitionDuration(settings.value),
+        pageBuilder: (context, animation, secondaryAnimation) => GameScreen(
           mode: mode,
           initialBestScore:
               playerStats.value.bestScoreByMode[mode.statsKey] ?? 0,
           settings: settings.value,
           onSessionCompleted: onSessionCompleted,
         ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final Animation<double> curvedAnimation = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          final Animation<Offset> slideAnimation = Tween<Offset>(
+            begin: const Offset(0, 0.02),
+            end: Offset.zero,
+          ).animate(curvedAnimation);
+          return FadeTransition(
+            opacity: curvedAnimation,
+            child: SlideTransition(position: slideAnimation, child: child),
+          );
+        },
       ),
+    );
+  }
+
+  Duration _screenTransitionDuration(NeuralSettings settings) {
+    return settings.tuneDuration(
+      const Duration(milliseconds: 220),
+      reducedFactor: 0.55,
+      minMilliseconds: 110,
     );
   }
 }
@@ -2810,12 +2835,12 @@ class StatsScreen extends StatelessWidget {
           decoration: BoxDecoration(color: NeuralTheme.background),
           child: Stack(
             children: [
-              const _BackgroundEffects(),
+              _BackgroundEffects(),
               SafeArea(
                 bottom: false,
                 child: Column(
                   children: [
-                    const NeuralTopBar(),
+                    NeuralTopBar(),
                     Expanded(
                       child: SingleChildScrollView(
                         padding: EdgeInsets.fromLTRB(
@@ -2898,12 +2923,12 @@ class SettingsScreen extends StatelessWidget {
             decoration: BoxDecoration(color: NeuralTheme.background),
             child: Stack(
               children: [
-                const _BackgroundEffects(),
+                _BackgroundEffects(),
                 SafeArea(
                   bottom: false,
                   child: Column(
                     children: [
-                      const NeuralTopBar(),
+                      NeuralTopBar(),
                       Expanded(
                         child: ValueListenableBuilder<PlayerStats>(
                           valueListenable: playerStats,
@@ -4753,20 +4778,7 @@ class _NeuralHomeShell extends StatefulWidget {
 }
 
 class _NeuralHomeShellState extends State<_NeuralHomeShell> {
-  late final PageController _pageController;
   NeuralNavItem _selected = NeuralNavItem.grid;
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController();
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
 
   void _goToItem(NeuralNavItem item) {
     if (_selected == item) {
@@ -4776,53 +4788,88 @@ class _NeuralHomeShellState extends State<_NeuralHomeShell> {
     setState(() {
       _selected = item;
     });
-    _pageController.animateToPage(
-      item.index,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
+  }
+
+  Duration _tabTransitionDuration(NeuralSettings settings) {
+    return settings.tuneDuration(
+      const Duration(milliseconds: 220),
+      reducedFactor: 0.55,
+      minMilliseconds: 110,
     );
+  }
+
+  Widget _buildScreen(NeuralNavItem item) {
+    switch (item) {
+      case NeuralNavItem.grid:
+        return MainMenuScreen(
+          key: const PageStorageKey<String>('home-main-menu'),
+          currentUser: widget.currentUser,
+          playerStats: widget.playerStats,
+          settings: widget.settings,
+          onSessionCompleted: widget.onSessionCompleted,
+          onOpenSettings: () => _goToItem(NeuralNavItem.settings),
+        );
+      case NeuralNavItem.stats:
+        return StatsScreen(
+          key: const PageStorageKey<String>('home-stats'),
+          currentUser: widget.currentUser,
+          playerStats: widget.playerStats,
+          sessions: widget.sessions,
+          leaderboardUsers: widget.leaderboardUsers,
+          settings: widget.settings,
+        );
+      case NeuralNavItem.settings:
+        return SettingsScreen(
+          key: const PageStorageKey<String>('home-settings'),
+          currentUser: widget.currentUser,
+          playerStats: widget.playerStats,
+          settings: widget.settings,
+          onSettingsChanged: widget.onSettingsChanged,
+          onSignOut: widget.onSignOut,
+        );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final NeuralSettings currentSettings = widget.settings.value;
+    final Duration transitionDuration = _tabTransitionDuration(currentSettings);
     return Scaffold(
       body: Stack(
         children: [
-          PageView(
-            controller: _pageController,
-            onPageChanged: (index) {
-              final NeuralNavItem nextItem = NeuralNavItem.values[index];
-              if (_selected == nextItem) {
-                return;
-              }
-
-              setState(() {
-                _selected = nextItem;
-              });
+          AnimatedSwitcher(
+            duration: transitionDuration,
+            reverseDuration: transitionDuration,
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            layoutBuilder: (currentChild, previousChildren) {
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  ...previousChildren,
+                  if (currentChild case final Widget currentChild) currentChild,
+                ],
+              );
             },
-            children: [
-              MainMenuScreen(
-                currentUser: widget.currentUser,
-                playerStats: widget.playerStats,
-                settings: widget.settings,
-                onSessionCompleted: widget.onSessionCompleted,
-                onOpenSettings: () => _goToItem(NeuralNavItem.settings),
-              ),
-              StatsScreen(
-                currentUser: widget.currentUser,
-                playerStats: widget.playerStats,
-                sessions: widget.sessions,
-                leaderboardUsers: widget.leaderboardUsers,
-                settings: widget.settings,
-              ),
-              SettingsScreen(
-                currentUser: widget.currentUser,
-                playerStats: widget.playerStats,
-                settings: widget.settings,
-                onSettingsChanged: widget.onSettingsChanged,
-                onSignOut: widget.onSignOut,
-              ),
-            ],
+            transitionBuilder: (child, animation) {
+              final Animation<double> curvedAnimation = CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+                reverseCurve: Curves.easeInCubic,
+              );
+              final Animation<Offset> slideAnimation = Tween<Offset>(
+                begin: const Offset(0.035, 0),
+                end: Offset.zero,
+              ).animate(curvedAnimation);
+              return FadeTransition(
+                opacity: curvedAnimation,
+                child: SlideTransition(position: slideAnimation, child: child),
+              );
+            },
+            child: KeyedSubtree(
+              key: ValueKey<NeuralNavItem>(_selected),
+              child: RepaintBoundary(child: _buildScreen(_selected)),
+            ),
           ),
           SafeArea(
             child: Align(
@@ -4894,6 +4941,7 @@ class _GameScreenState extends State<GameScreen> {
   int _bestRun = 0;
   int _round = 0;
   int _inputIndex = 0;
+  int _roundAudioStreak = 0;
   int _tapFeedbackVersion = 0;
   double _sequenceProgress = 0;
   double _timerProgress = 1;
@@ -4942,6 +4990,7 @@ class _GameScreenState extends State<GameScreen> {
         _bestRun = 0;
         _round = 0;
         _inputIndex = 0;
+        _roundAudioStreak = 0;
         _sequenceProgress = 0;
         _timerProgress = 1;
         _phase = GamePhase.booting;
@@ -4978,6 +5027,7 @@ class _GameScreenState extends State<GameScreen> {
       _sequence.add(nextTile);
       _round = _sequence.length;
       _inputIndex = 0;
+      _roundAudioStreak = _streak;
       _tapFeedbackVersion += 1;
       _sequenceProgress = 0;
       _timerProgress = 1;
@@ -5014,7 +5064,7 @@ class _GameScreenState extends State<GameScreen> {
       _playSequenceHaptic();
       unawaited(
         _soundController.playSequenceStep(
-          streak: _streak,
+          streak: _roundAudioStreak,
           enabled: widget.settings.soundEnabled,
           masterVolume: widget.settings.effectiveSoundLevel,
         ),
@@ -5136,7 +5186,7 @@ class _GameScreenState extends State<GameScreen> {
     _playTapHaptic();
     unawaited(
       _soundController.playTap(
-        streak: _streak,
+        streak: _roundAudioStreak,
         completedRound: completesRound,
         enabled: widget.settings.soundEnabled,
         masterVolume: widget.settings.effectiveSoundLevel,
@@ -5357,21 +5407,6 @@ class _GameScreenState extends State<GameScreen> {
     unawaited(_startNewGame());
   }
 
-  String get _phaseLabel {
-    switch (_phase) {
-      case GamePhase.booting:
-        return 'INITIALIZING';
-      case GamePhase.showing:
-        return 'WATCH';
-      case GamePhase.input:
-        return 'REPEAT';
-      case GamePhase.roundClear:
-        return 'LOCKED IN';
-      case GamePhase.failed:
-        return 'SIGNAL LOST';
-    }
-  }
-
   bool get _isGameRunning =>
       !_isSubmitting &&
       (_phase == GamePhase.booting ||
@@ -5415,7 +5450,7 @@ class _GameScreenState extends State<GameScreen> {
         decoration: BoxDecoration(color: NeuralTheme.background),
         child: Stack(
           children: [
-            const _BackgroundEffects(),
+            _BackgroundEffects(),
             SafeArea(
               bottom: !isGameRunning,
               child: Column(
@@ -5443,7 +5478,6 @@ class _GameScreenState extends State<GameScreen> {
                                 score: _score,
                                 streak: _streak,
                                 round: _round,
-                                phaseLabel: _phaseLabel,
                                 progress: _sequenceProgress,
                                 onReset: () => unawaited(_resetGame()),
                               )
@@ -5452,7 +5486,6 @@ class _GameScreenState extends State<GameScreen> {
                                 score: _score,
                                 streak: _streak,
                                 round: _round,
-                                phaseLabel: _phaseLabel,
                                 progress: _sequenceProgress,
                                 timerProgress: _timerProgress,
                                 onReset: () => unawaited(_resetGame()),
@@ -5461,7 +5494,6 @@ class _GameScreenState extends State<GameScreen> {
                             _ModeProgress(
                               mode: widget.mode,
                               round: _round,
-                              phaseLabel: _phaseLabel,
                               progress: _sequenceProgress,
                               timerProgress:
                                   _inputWindowForCurrentTurn() == null
@@ -5484,11 +5516,9 @@ class _GameScreenState extends State<GameScreen> {
                                 ),
                               ),
                             ),
-                            if (!isGameRunning &&
-                                widget.settings.trainingHintsEnabled)
+                            if (widget.settings.trainingHintsEnabled)
                               const SizedBox(height: 20),
-                            if (!isGameRunning &&
-                                widget.settings.trainingHintsEnabled)
+                            if (widget.settings.trainingHintsEnabled)
                               _ModeHintCard(
                                 mode: widget.mode,
                                 phase: _phase,
@@ -5735,7 +5765,6 @@ class _FocusDashboard extends StatelessWidget {
     required this.score,
     required this.streak,
     required this.round,
-    required this.phaseLabel,
     required this.progress,
     required this.onReset,
   });
@@ -5743,7 +5772,6 @@ class _FocusDashboard extends StatelessWidget {
   final int score;
   final int streak;
   final int round;
-  final String phaseLabel;
   final double progress;
   final VoidCallback onReset;
 
@@ -5807,16 +5835,6 @@ class _FocusDashboard extends StatelessWidget {
             valueColor: AlwaysStoppedAnimation<Color>(NeuralTheme.primary),
           ),
         ),
-        const SizedBox(height: 10),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            phaseLabel,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: NeuralTheme.primarySoft.withValues(alpha: 0.75),
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -5827,7 +5845,6 @@ class _OverdriveDashboard extends StatelessWidget {
     required this.score,
     required this.streak,
     required this.round,
-    required this.phaseLabel,
     required this.progress,
     required this.timerProgress,
     required this.onReset,
@@ -5836,7 +5853,6 @@ class _OverdriveDashboard extends StatelessWidget {
   final int score;
   final int streak;
   final int round;
-  final String phaseLabel;
   final double progress;
   final double timerProgress;
   final VoidCallback onReset;
@@ -5920,31 +5936,22 @@ class _OverdriveDashboard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                phaseLabel,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: NeuralTheme.secondarySoft.withValues(alpha: 0.80),
+        Align(
+          alignment: Alignment.centerRight,
+          child: SizedBox(
+            width: 92,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: timerProgress,
+                minHeight: 6,
+                backgroundColor: NeuralTheme.surfaceHighest,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  NeuralTheme.tertiary,
                 ),
               ),
             ),
-            SizedBox(
-              width: 92,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: timerProgress,
-                  minHeight: 6,
-                  backgroundColor: NeuralTheme.surfaceHighest,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    NeuralTheme.tertiary,
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ],
     );
@@ -5996,14 +6003,12 @@ class _ModeProgress extends StatelessWidget {
   const _ModeProgress({
     required this.mode,
     required this.round,
-    required this.phaseLabel,
     required this.progress,
     this.timerProgress,
   });
 
   final GameMode mode;
   final int round;
-  final String phaseLabel;
   final double progress;
   final double? timerProgress;
 
@@ -6058,16 +6063,6 @@ class _ModeProgress extends StatelessWidget {
               style: Theme.of(
                 context,
               ).textTheme.labelSmall?.copyWith(color: NeuralTheme.textMuted),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                phaseLabel,
-                textAlign: TextAlign.center,
-                style: Theme.of(
-                  context,
-                ).textTheme.labelSmall?.copyWith(color: NeuralTheme.textDim),
-              ),
             ),
             if (timerProgress != null)
               SizedBox(
