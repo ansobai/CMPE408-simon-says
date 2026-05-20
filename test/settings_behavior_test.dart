@@ -194,6 +194,19 @@ void main() {
     expect(find.textContaining('Current theme: Ember Glow'), findsOneWidget);
   });
 
+  testWidgets('training hints are visible during gameplay by default', (
+    WidgetTester tester,
+  ) async {
+    await _setPhoneSurface(tester);
+    await tester.pumpWidget(_buildSignedInApp());
+    await tester.pumpAndSettle();
+
+    await _openFocusMode(tester);
+
+    expect(find.text('PATTERN BRIEF'), findsOneWidget);
+    await _disposeGameScreen(tester);
+  });
+
   testWidgets('training hints setting hides the gameplay hint card', (
     WidgetTester tester,
   ) async {

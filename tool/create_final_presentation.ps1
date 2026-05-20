@@ -172,7 +172,7 @@ try {
   Add-TextBox $slide 72 278 130 24 'Main menu, stats, settings, gameplay' 10 $muted $false | Out-Null
   $box2 = Add-Panel $slide 248 240 170 68 $panel 0.02
   Add-TextBox $slide 268 258 130 16 'Repositories' 14 $cyan $true | Out-Null
-  Add-TextBox $slide 268 278 130 24 'LocalStatsRepository and LocalSettingsRepository' 10 $muted $false | Out-Null
+  Add-TextBox $slide 268 278 130 24 'Remote stats with shared local settings' 10 $muted $false | Out-Null
   $box3 = Add-Panel $slide 444 240 170 68 $panel 0.02
   Add-TextBox $slide 464 258 130 16 'Device storage' 14 $cyan $true | Out-Null
   Add-TextBox $slide 464 278 130 24 'SharedPreferences stores settings, sessions, and derived stats' 10 $muted $false | Out-Null

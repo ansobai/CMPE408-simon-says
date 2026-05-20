@@ -22,7 +22,10 @@ class ClerkAuthTokenStore implements AuthTokenStore {
     }
 
     try {
-      final SessionToken token = await _auth.sessionToken();
+      // Avoid hanging the entire app startup if Clerk never resolves a token.
+      final SessionToken token = await _auth
+          .sessionToken()
+          .timeout(const Duration(seconds: 10));
       return token.jwt;
     } on ClerkError {
       return null;

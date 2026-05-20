@@ -1,0 +1,3 @@
+APP_DISPLAY_NAME = Simon Says
+APP_BUNDLE_IDENTIFIER = com.example.simonSays
+APPLE_DEVELOPMENT_TEAM =

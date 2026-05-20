@@ -10,17 +10,15 @@ import 'api/api_client.dart';
 import 'api/api_errors.dart';
 import 'app_environment.dart';
 import 'auth/auth_models.dart';
+import 'auth/auth_repository.dart';
 import 'auth/clerk_auth_repository.dart';
 import 'auth/clerk_auth_token_store.dart';
-import 'auth/auth_repository.dart';
-import 'auth/local_auth_repository.dart';
 import 'auth/remote_auth_repository.dart';
 import 'auth/shared_preferences_auth_token_store.dart';
 import 'neural_sound_controller.dart';
 import 'settings/local_settings_repository.dart';
 import 'settings/neural_settings.dart';
 import 'settings/settings_repository.dart';
-import 'stats/local_stats_repository.dart';
 import 'stats/remote_stats_repository.dart';
 import 'stats/stats_models.dart';
 import 'stats/stats_repository.dart';
@@ -32,10 +30,6 @@ Future<void> main() async {
 }
 
 Widget _buildRootApp() {
-  if (AppEnvironment.useLocalRepositories) {
-    return const NeuralRecallApp();
-  }
-
   if (AppEnvironment.clerkPublishableKey.isEmpty) {
     return const _MissingClerkConfigurationApp();
   }
@@ -69,6 +63,9 @@ class NeuralRecallApp extends StatefulWidget {
 }
 
 class _NeuralRecallAppState extends State<NeuralRecallApp> {
+  static const Duration _startupStepTimeout = Duration(seconds: 12);
+  static const Duration _startupWatchdogTimeout = Duration(seconds: 18);
+
   final ValueNotifier<AppUser?> _currentUser = ValueNotifier<AppUser?>(null);
   final ValueNotifier<PlayerStats> _playerStats = ValueNotifier<PlayerStats>(
     PlayerStats.empty(),
@@ -87,6 +84,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   late final StatsRepository _statsRepository;
   late final SettingsRepository _settingsRepository;
   ApiClient? _ownedApiClient;
+  Timer? _startupWatchdog;
   bool _isLoadingAppState = true;
   bool _isReconcilingClerkSession = false;
 
@@ -95,10 +93,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     super.initState();
     _settingsRepository =
         widget.settingsRepository ?? LocalSettingsRepository();
-    if (AppEnvironment.useLocalRepositories) {
-      _authRepository = widget.authRepository ?? LocalAuthRepository();
-      _statsRepository = widget.statsRepository ?? LocalStatsRepository();
-    } else if (widget.clerkAuthState != null) {
+    if (widget.clerkAuthState != null) {
       final ClerkAuthTokenStore tokenStore = ClerkAuthTokenStore(
         auth: widget.clerkAuthState!,
       );
@@ -116,6 +111,10 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
           widget.statsRepository ??
           RemoteStatsRepository(apiClient: _ownedApiClient!);
       widget.clerkAuthState!.addListener(_handleClerkAuthStateChanged);
+    } else if (
+        widget.authRepository != null && widget.statsRepository != null) {
+      _authRepository = widget.authRepository!;
+      _statsRepository = widget.statsRepository!;
     } else {
       final SharedPreferencesAuthTokenStore tokenStore =
           SharedPreferencesAuthTokenStore();
@@ -134,7 +133,33 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
           RemoteStatsRepository(apiClient: _ownedApiClient!);
     }
     WidgetsBinding.instance.addObserver(_fullscreenObserver);
+    _startStartupWatchdog();
     unawaited(_loadPersistedAppState());
+  }
+
+  void _startStartupWatchdog() {
+    _startupWatchdog?.cancel();
+    _startupWatchdog = Timer(_startupWatchdogTimeout, () {
+      if (!mounted || !_isLoadingAppState) {
+        return;
+      }
+
+      debugPrint(
+        'Startup watchdog fired after $_startupWatchdogTimeout. Releasing splash screen.',
+      );
+      _showNotice(
+        const _AppNotice(
+          title: 'Startup took too long',
+          message:
+              'The app could not finish contacting Clerk or the shared backend in time. You can still try signing in again once the services respond.',
+          icon: Icons.hourglass_bottom_rounded,
+          tone: _AppNoticeTone.warning,
+        ),
+      );
+      setState(() {
+        _isLoadingAppState = false;
+      });
+    });
   }
 
   void _handleClerkAuthStateChanged() {
@@ -156,6 +181,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   }
 
   Future<void> _loadPersistedAppState() async {
+    debugPrint('Startup: loading persisted app state.');
     AppUser? currentUser;
     PlayerStats stats = PlayerStats.empty();
     List<GameSession> sessions = <GameSession>[];
@@ -166,9 +192,17 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     bool leaderboardUnavailable = false;
     bool signedInDataUnavailable = false;
     bool sessionExpired = false;
+    final Future<AppUser?> restoreSessionFuture =
+        _authRepository.restoreSession().timeout(_startupStepTimeout);
+    final Future<List<AppUser>> loadLeaderboardFuture =
+        _statsRepository.loadLeaderboardUsers().timeout(_startupStepTimeout);
 
     try {
-      currentUser = await _authRepository.restoreSession();
+      debugPrint('Startup: restoring session.');
+      currentUser = await restoreSessionFuture;
+      debugPrint(
+        'Startup: restoreSession completed. signedIn=${currentUser != null}',
+      );
     } on ApiException {
       authServiceUnavailable = true;
     } catch (_) {
@@ -176,7 +210,11 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     }
 
     try {
-      leaderboardUsers = await _statsRepository.loadLeaderboardUsers();
+      debugPrint('Startup: loading leaderboard.');
+      leaderboardUsers = await loadLeaderboardFuture;
+      debugPrint(
+        'Startup: leaderboard loaded with ${leaderboardUsers.length} users.',
+      );
     } on ApiException {
       leaderboardUsers = <AppUser>[];
       leaderboardUnavailable = true;
@@ -187,6 +225,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
 
     if (currentUser != null) {
       try {
+        debugPrint('Startup: loading signed-in user data.');
         final _SignedInState signedInState = await _fetchSignedInData(
           currentUser.id,
         );
@@ -194,6 +233,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
         sessions = signedInState.sessions;
         stats = signedInState.stats;
         leaderboardUsers = signedInState.leaderboardUsers;
+        debugPrint('Startup: signed-in user data loaded.');
       } on ApiUnauthorizedException {
         await _authRepository.signOut();
         currentUser = null;
@@ -212,7 +252,9 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     }
 
     try {
+      debugPrint('Startup: loading settings.');
       settings = await _settingsRepository.loadSettings();
+      debugPrint('Startup: settings loaded.');
     } catch (_) {
       settings = const NeuralSettings();
       recoveredSettings = true;
@@ -222,6 +264,8 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
       return;
     }
 
+    _startupWatchdog?.cancel();
+    debugPrint('Startup: applying initial app state.');
     _currentUser.value = currentUser;
     _playerStats.value = stats;
     _sessions.value = List<GameSession>.unmodifiable(sessions);
@@ -291,6 +335,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     setState(() {
       _isLoadingAppState = false;
     });
+    debugPrint('Startup: complete.');
   }
 
   Future<void> _saveCompletedSession(GameSession session) async {
@@ -342,12 +387,22 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   }
 
   Future<_SignedInState> _fetchSignedInData(int userId) async {
-    final AppUser? refreshedUser = await _authRepository.loadUserById(userId);
-    final List<GameSession> sessions = await _statsRepository
-        .loadSessionsForUser(userId);
-    final PlayerStats stats = await _statsRepository.loadStatsForUser(userId);
-    final List<AppUser> leaderboardUsers = await _statsRepository
-        .loadLeaderboardUsers();
+    final Future<AppUser?> loadUserFuture = _authRepository
+        .loadUserById(userId)
+        .timeout(_startupStepTimeout);
+    final Future<List<GameSession>> loadSessionsFuture = _statsRepository
+        .loadSessionsForUser(userId)
+        .timeout(_startupStepTimeout);
+    final Future<PlayerStats> loadStatsFuture = _statsRepository
+        .loadStatsForUser(userId)
+        .timeout(_startupStepTimeout);
+    final Future<List<AppUser>> loadLeaderboardFuture = _statsRepository
+        .loadLeaderboardUsers()
+        .timeout(_startupStepTimeout);
+    final AppUser? refreshedUser = await loadUserFuture;
+    final List<GameSession> sessions = await loadSessionsFuture;
+    final PlayerStats stats = await loadStatsFuture;
+    final List<AppUser> leaderboardUsers = await loadLeaderboardFuture;
     return _SignedInState(
       user: refreshedUser,
       sessions: sessions,
@@ -532,6 +587,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   void dispose() {
     WidgetsBinding.instance.removeObserver(_fullscreenObserver);
     widget.clerkAuthState?.removeListener(_handleClerkAuthStateChanged);
+    _startupWatchdog?.cancel();
     _ownedApiClient?.close();
     _currentUser.dispose();
     _playerStats.dispose();
@@ -683,7 +739,7 @@ class _MissingClerkConfigurationApp extends StatelessWidget {
                         ),
                         SizedBox(height: 12),
                         Text(
-                          'Run the app with --dart-define=CLERK_PUBLISHABLE_KEY=pk_... or enable local repositories with --dart-define=USE_LOCAL_DATA=true.',
+                          'Run the app with --dart-define=CLERK_PUBLISHABLE_KEY=pk_... and, if needed, --dart-define=API_BASE_URL=https://your-api.example.com.',
                           style: TextStyle(
                             color: Color(0xFFD2D8E2),
                             fontSize: 15,
@@ -1193,7 +1249,7 @@ class _ClerkAuthScreenState extends State<_ClerkAuthScreen> {
                   child: _AuthTextField(
                     controller: _lastNameController,
                     label: 'Last name',
-                    hint: 'Khan',
+                    hint: 'ali',
                     textInputAction: TextInputAction.next,
                   ),
                 ),
@@ -2128,9 +2184,9 @@ class _LocalAuthScreenState extends State<_LocalAuthScreen> {
                         ],
                       ),
                       const SizedBox(height: 20),
-                      Text(
-                        _mode == _AuthMode.signIn ? 'Sign in' : 'Create account',
-                        style: const TextStyle(
+                      const Text(
+                        'Sign in or create a shared player account',
+                        style: TextStyle(
                           color: NeuralTheme.text,
                           fontSize: 28,
                           fontWeight: FontWeight.w800,
@@ -2138,8 +2194,10 @@ class _LocalAuthScreenState extends State<_LocalAuthScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      const Text(
-                        'Use username and password.',
+                      Text(
+                        _mode == _AuthMode.signIn
+                            ? 'Use your shared leaderboard username and password.'
+                            : 'Create a shared profile with a username and password.',
                         style: TextStyle(
                           color: NeuralTheme.textMuted,
                           fontSize: 14,
@@ -2213,7 +2271,7 @@ class _LocalAuthScreenState extends State<_LocalAuthScreen> {
                               : Text(
                                   _mode == _AuthMode.signIn
                                       ? 'SIGN IN'
-                                      : 'CREATE ACCOUNT',
+                                      : 'CREATE PROFILE',
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w800,
@@ -2595,7 +2653,7 @@ class MainMenuScreen extends StatelessWidget {
             ),
             child: Stack(
               children: [
-                const _BackgroundEffects(),
+                _BackgroundEffects(),
                 SafeArea(
                   bottom: false,
                   child: Column(
@@ -2666,15 +2724,40 @@ class MainMenuScreen extends StatelessWidget {
 
   Future<void> _openGame(BuildContext context, GameMode mode) {
     return Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => GameScreen(
+      PageRouteBuilder<void>(
+        transitionDuration: _screenTransitionDuration(settings.value),
+        reverseTransitionDuration: _screenTransitionDuration(settings.value),
+        pageBuilder: (context, animation, secondaryAnimation) => GameScreen(
           mode: mode,
           initialBestScore:
               playerStats.value.bestScoreByMode[mode.statsKey] ?? 0,
           settings: settings.value,
           onSessionCompleted: onSessionCompleted,
         ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final Animation<double> curvedAnimation = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          final Animation<Offset> slideAnimation = Tween<Offset>(
+            begin: const Offset(0, 0.02),
+            end: Offset.zero,
+          ).animate(curvedAnimation);
+          return FadeTransition(
+            opacity: curvedAnimation,
+            child: SlideTransition(position: slideAnimation, child: child),
+          );
+        },
       ),
+    );
+  }
+
+  Duration _screenTransitionDuration(NeuralSettings settings) {
+    return settings.tuneDuration(
+      const Duration(milliseconds: 220),
+      reducedFactor: 0.55,
+      minMilliseconds: 110,
     );
   }
 }
@@ -2810,12 +2893,12 @@ class StatsScreen extends StatelessWidget {
           decoration: BoxDecoration(color: NeuralTheme.background),
           child: Stack(
             children: [
-              const _BackgroundEffects(),
+              _BackgroundEffects(),
               SafeArea(
                 bottom: false,
                 child: Column(
                   children: [
-                    const NeuralTopBar(),
+                    NeuralTopBar(),
                     Expanded(
                       child: SingleChildScrollView(
                         padding: EdgeInsets.fromLTRB(
@@ -2898,12 +2981,12 @@ class SettingsScreen extends StatelessWidget {
             decoration: BoxDecoration(color: NeuralTheme.background),
             child: Stack(
               children: [
-                const _BackgroundEffects(),
+                _BackgroundEffects(),
                 SafeArea(
                   bottom: false,
                   child: Column(
                     children: [
-                      const NeuralTopBar(),
+                      NeuralTopBar(),
                       Expanded(
                         child: ValueListenableBuilder<PlayerStats>(
                           valueListenable: playerStats,
@@ -4753,20 +4836,7 @@ class _NeuralHomeShell extends StatefulWidget {
 }
 
 class _NeuralHomeShellState extends State<_NeuralHomeShell> {
-  late final PageController _pageController;
   NeuralNavItem _selected = NeuralNavItem.grid;
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController();
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
 
   void _goToItem(NeuralNavItem item) {
     if (_selected == item) {
@@ -4776,53 +4846,88 @@ class _NeuralHomeShellState extends State<_NeuralHomeShell> {
     setState(() {
       _selected = item;
     });
-    _pageController.animateToPage(
-      item.index,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
+  }
+
+  Duration _tabTransitionDuration(NeuralSettings settings) {
+    return settings.tuneDuration(
+      const Duration(milliseconds: 220),
+      reducedFactor: 0.55,
+      minMilliseconds: 110,
     );
+  }
+
+  Widget _buildScreen(NeuralNavItem item) {
+    switch (item) {
+      case NeuralNavItem.grid:
+        return MainMenuScreen(
+          key: const PageStorageKey<String>('home-main-menu'),
+          currentUser: widget.currentUser,
+          playerStats: widget.playerStats,
+          settings: widget.settings,
+          onSessionCompleted: widget.onSessionCompleted,
+          onOpenSettings: () => _goToItem(NeuralNavItem.settings),
+        );
+      case NeuralNavItem.stats:
+        return StatsScreen(
+          key: const PageStorageKey<String>('home-stats'),
+          currentUser: widget.currentUser,
+          playerStats: widget.playerStats,
+          sessions: widget.sessions,
+          leaderboardUsers: widget.leaderboardUsers,
+          settings: widget.settings,
+        );
+      case NeuralNavItem.settings:
+        return SettingsScreen(
+          key: const PageStorageKey<String>('home-settings'),
+          currentUser: widget.currentUser,
+          playerStats: widget.playerStats,
+          settings: widget.settings,
+          onSettingsChanged: widget.onSettingsChanged,
+          onSignOut: widget.onSignOut,
+        );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final NeuralSettings currentSettings = widget.settings.value;
+    final Duration transitionDuration = _tabTransitionDuration(currentSettings);
     return Scaffold(
       body: Stack(
         children: [
-          PageView(
-            controller: _pageController,
-            onPageChanged: (index) {
-              final NeuralNavItem nextItem = NeuralNavItem.values[index];
-              if (_selected == nextItem) {
-                return;
-              }
-
-              setState(() {
-                _selected = nextItem;
-              });
+          AnimatedSwitcher(
+            duration: transitionDuration,
+            reverseDuration: transitionDuration,
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            layoutBuilder: (currentChild, previousChildren) {
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  ...previousChildren,
+                  if (currentChild case final Widget currentChild) currentChild,
+                ],
+              );
             },
-            children: [
-              MainMenuScreen(
-                currentUser: widget.currentUser,
-                playerStats: widget.playerStats,
-                settings: widget.settings,
-                onSessionCompleted: widget.onSessionCompleted,
-                onOpenSettings: () => _goToItem(NeuralNavItem.settings),
-              ),
-              StatsScreen(
-                currentUser: widget.currentUser,
-                playerStats: widget.playerStats,
-                sessions: widget.sessions,
-                leaderboardUsers: widget.leaderboardUsers,
-                settings: widget.settings,
-              ),
-              SettingsScreen(
-                currentUser: widget.currentUser,
-                playerStats: widget.playerStats,
-                settings: widget.settings,
-                onSettingsChanged: widget.onSettingsChanged,
-                onSignOut: widget.onSignOut,
-              ),
-            ],
+            transitionBuilder: (child, animation) {
+              final Animation<double> curvedAnimation = CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+                reverseCurve: Curves.easeInCubic,
+              );
+              final Animation<Offset> slideAnimation = Tween<Offset>(
+                begin: const Offset(0.035, 0),
+                end: Offset.zero,
+              ).animate(curvedAnimation);
+              return FadeTransition(
+                opacity: curvedAnimation,
+                child: SlideTransition(position: slideAnimation, child: child),
+              );
+            },
+            child: KeyedSubtree(
+              key: ValueKey<NeuralNavItem>(_selected),
+              child: RepaintBoundary(child: _buildScreen(_selected)),
+            ),
           ),
           SafeArea(
             child: Align(
@@ -4894,6 +4999,7 @@ class _GameScreenState extends State<GameScreen> {
   int _bestRun = 0;
   int _round = 0;
   int _inputIndex = 0;
+  int _roundAudioStreak = 0;
   int _tapFeedbackVersion = 0;
   double _sequenceProgress = 0;
   double _timerProgress = 1;
@@ -4942,6 +5048,7 @@ class _GameScreenState extends State<GameScreen> {
         _bestRun = 0;
         _round = 0;
         _inputIndex = 0;
+        _roundAudioStreak = 0;
         _sequenceProgress = 0;
         _timerProgress = 1;
         _phase = GamePhase.booting;
@@ -4978,6 +5085,7 @@ class _GameScreenState extends State<GameScreen> {
       _sequence.add(nextTile);
       _round = _sequence.length;
       _inputIndex = 0;
+      _roundAudioStreak = _streak;
       _tapFeedbackVersion += 1;
       _sequenceProgress = 0;
       _timerProgress = 1;
@@ -5014,7 +5122,7 @@ class _GameScreenState extends State<GameScreen> {
       _playSequenceHaptic();
       unawaited(
         _soundController.playSequenceStep(
-          streak: _streak,
+          streak: _roundAudioStreak,
           enabled: widget.settings.soundEnabled,
           masterVolume: widget.settings.effectiveSoundLevel,
         ),
@@ -5136,7 +5244,7 @@ class _GameScreenState extends State<GameScreen> {
     _playTapHaptic();
     unawaited(
       _soundController.playTap(
-        streak: _streak,
+        streak: _roundAudioStreak,
         completedRound: completesRound,
         enabled: widget.settings.soundEnabled,
         masterVolume: widget.settings.effectiveSoundLevel,
@@ -5357,21 +5465,6 @@ class _GameScreenState extends State<GameScreen> {
     unawaited(_startNewGame());
   }
 
-  String get _phaseLabel {
-    switch (_phase) {
-      case GamePhase.booting:
-        return 'INITIALIZING';
-      case GamePhase.showing:
-        return 'WATCH';
-      case GamePhase.input:
-        return 'REPEAT';
-      case GamePhase.roundClear:
-        return 'LOCKED IN';
-      case GamePhase.failed:
-        return 'SIGNAL LOST';
-    }
-  }
-
   bool get _isGameRunning =>
       !_isSubmitting &&
       (_phase == GamePhase.booting ||
@@ -5415,7 +5508,7 @@ class _GameScreenState extends State<GameScreen> {
         decoration: BoxDecoration(color: NeuralTheme.background),
         child: Stack(
           children: [
-            const _BackgroundEffects(),
+            _BackgroundEffects(),
             SafeArea(
               bottom: !isGameRunning,
               child: Column(
@@ -5443,7 +5536,6 @@ class _GameScreenState extends State<GameScreen> {
                                 score: _score,
                                 streak: _streak,
                                 round: _round,
-                                phaseLabel: _phaseLabel,
                                 progress: _sequenceProgress,
                                 onReset: () => unawaited(_resetGame()),
                               )
@@ -5452,7 +5544,6 @@ class _GameScreenState extends State<GameScreen> {
                                 score: _score,
                                 streak: _streak,
                                 round: _round,
-                                phaseLabel: _phaseLabel,
                                 progress: _sequenceProgress,
                                 timerProgress: _timerProgress,
                                 onReset: () => unawaited(_resetGame()),
@@ -5461,7 +5552,6 @@ class _GameScreenState extends State<GameScreen> {
                             _ModeProgress(
                               mode: widget.mode,
                               round: _round,
-                              phaseLabel: _phaseLabel,
                               progress: _sequenceProgress,
                               timerProgress:
                                   _inputWindowForCurrentTurn() == null
@@ -5484,11 +5574,9 @@ class _GameScreenState extends State<GameScreen> {
                                 ),
                               ),
                             ),
-                            if (!isGameRunning &&
-                                widget.settings.trainingHintsEnabled)
+                            if (widget.settings.trainingHintsEnabled)
                               const SizedBox(height: 20),
-                            if (!isGameRunning &&
-                                widget.settings.trainingHintsEnabled)
+                            if (widget.settings.trainingHintsEnabled)
                               _ModeHintCard(
                                 mode: widget.mode,
                                 phase: _phase,
@@ -5735,7 +5823,6 @@ class _FocusDashboard extends StatelessWidget {
     required this.score,
     required this.streak,
     required this.round,
-    required this.phaseLabel,
     required this.progress,
     required this.onReset,
   });
@@ -5743,7 +5830,6 @@ class _FocusDashboard extends StatelessWidget {
   final int score;
   final int streak;
   final int round;
-  final String phaseLabel;
   final double progress;
   final VoidCallback onReset;
 
@@ -5807,16 +5893,6 @@ class _FocusDashboard extends StatelessWidget {
             valueColor: AlwaysStoppedAnimation<Color>(NeuralTheme.primary),
           ),
         ),
-        const SizedBox(height: 10),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            phaseLabel,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: NeuralTheme.primarySoft.withValues(alpha: 0.75),
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -5827,7 +5903,6 @@ class _OverdriveDashboard extends StatelessWidget {
     required this.score,
     required this.streak,
     required this.round,
-    required this.phaseLabel,
     required this.progress,
     required this.timerProgress,
     required this.onReset,
@@ -5836,7 +5911,6 @@ class _OverdriveDashboard extends StatelessWidget {
   final int score;
   final int streak;
   final int round;
-  final String phaseLabel;
   final double progress;
   final double timerProgress;
   final VoidCallback onReset;
@@ -5920,31 +5994,22 @@ class _OverdriveDashboard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                phaseLabel,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: NeuralTheme.secondarySoft.withValues(alpha: 0.80),
+        Align(
+          alignment: Alignment.centerRight,
+          child: SizedBox(
+            width: 92,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: timerProgress,
+                minHeight: 6,
+                backgroundColor: NeuralTheme.surfaceHighest,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  NeuralTheme.tertiary,
                 ),
               ),
             ),
-            SizedBox(
-              width: 92,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: timerProgress,
-                  minHeight: 6,
-                  backgroundColor: NeuralTheme.surfaceHighest,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    NeuralTheme.tertiary,
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ],
     );
@@ -5996,14 +6061,12 @@ class _ModeProgress extends StatelessWidget {
   const _ModeProgress({
     required this.mode,
     required this.round,
-    required this.phaseLabel,
     required this.progress,
     this.timerProgress,
   });
 
   final GameMode mode;
   final int round;
-  final String phaseLabel;
   final double progress;
   final double? timerProgress;
 
@@ -6058,16 +6121,6 @@ class _ModeProgress extends StatelessWidget {
               style: Theme.of(
                 context,
               ).textTheme.labelSmall?.copyWith(color: NeuralTheme.textMuted),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                phaseLabel,
-                textAlign: TextAlign.center,
-                style: Theme.of(
-                  context,
-                ).textTheme.labelSmall?.copyWith(color: NeuralTheme.textDim),
-              ),
             ),
             if (timerProgress != null)
               SizedBox(
