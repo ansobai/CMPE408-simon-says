@@ -56,12 +56,6 @@ flutter run ^
   --dart-define=CLERK_PUBLISHABLE_KEY=pk_test_your_publishable_key
 ```
 
-If you want to keep using the old local-only repositories for development, add:
-
-```bash
-flutter run --dart-define=USE_LOCAL_DATA=true
-```
-
 ## Docker Deployment
 
 The current repo is ready to deploy the shared backend with Docker Compose and
@@ -149,12 +143,10 @@ If you want to add the libraries used by this project manually, run:
 ```bash
 flutter pub add cupertino_icons
 flutter pub add audioplayers
+flutter pub add clerk_auth
 flutter pub add clerk_flutter
-flutter pub add crypto
 flutter pub add http
-flutter pub add path
 flutter pub add shared_preferences
-flutter pub add sqflite
 flutter pub add --dev flutter_lints
 ```
 

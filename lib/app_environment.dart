@@ -8,9 +8,4 @@ class AppEnvironment {
     'CLERK_PUBLISHABLE_KEY',
     defaultValue: '',
   );
-
-  static const bool useLocalRepositories = bool.fromEnvironment(
-    'USE_LOCAL_DATA',
-    defaultValue: false,
-  );
 }

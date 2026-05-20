@@ -7,13 +7,8 @@ class Base(DeclarativeBase):
 
 
 def create_engine_and_session_factory(database_url: str) -> tuple[object, sessionmaker[Session]]:
-  connect_args: dict[str, object] = {}
-  if database_url.startswith("sqlite"):
-    connect_args["check_same_thread"] = False
-
   engine = create_engine(
       database_url,
-      connect_args=connect_args,
       future=True,
       pool_pre_ping=True,
   )

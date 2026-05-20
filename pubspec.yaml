@@ -37,11 +37,8 @@ dependencies:
   audioplayers: ^6.6.0
   clerk_auth: 0.0.14-beta
   clerk_flutter: 0.0.14-beta
-  crypto: ^3.0.6
   http: ^1.5.0
-  path: ^1.9.1
   shared_preferences: ^2.5.3
-  sqflite: ^2.4.2
 
 dev_dependencies:
   flutter_test:

@@ -10,17 +10,15 @@ import 'api/api_client.dart';
 import 'api/api_errors.dart';
 import 'app_environment.dart';
 import 'auth/auth_models.dart';
+import 'auth/auth_repository.dart';
 import 'auth/clerk_auth_repository.dart';
 import 'auth/clerk_auth_token_store.dart';
-import 'auth/auth_repository.dart';
-import 'auth/local_auth_repository.dart';
 import 'auth/remote_auth_repository.dart';
 import 'auth/shared_preferences_auth_token_store.dart';
 import 'neural_sound_controller.dart';
 import 'settings/local_settings_repository.dart';
 import 'settings/neural_settings.dart';
 import 'settings/settings_repository.dart';
-import 'stats/local_stats_repository.dart';
 import 'stats/remote_stats_repository.dart';
 import 'stats/stats_models.dart';
 import 'stats/stats_repository.dart';
@@ -32,10 +30,6 @@ Future<void> main() async {
 }
 
 Widget _buildRootApp() {
-  if (AppEnvironment.useLocalRepositories) {
-    return const NeuralRecallApp();
-  }
-
   if (AppEnvironment.clerkPublishableKey.isEmpty) {
     return const _MissingClerkConfigurationApp();
   }
@@ -69,6 +63,9 @@ class NeuralRecallApp extends StatefulWidget {
 }
 
 class _NeuralRecallAppState extends State<NeuralRecallApp> {
+  static const Duration _startupStepTimeout = Duration(seconds: 12);
+  static const Duration _startupWatchdogTimeout = Duration(seconds: 18);
+
   final ValueNotifier<AppUser?> _currentUser = ValueNotifier<AppUser?>(null);
   final ValueNotifier<PlayerStats> _playerStats = ValueNotifier<PlayerStats>(
     PlayerStats.empty(),
@@ -87,6 +84,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   late final StatsRepository _statsRepository;
   late final SettingsRepository _settingsRepository;
   ApiClient? _ownedApiClient;
+  Timer? _startupWatchdog;
   bool _isLoadingAppState = true;
   bool _isReconcilingClerkSession = false;
 
@@ -95,10 +93,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     super.initState();
     _settingsRepository =
         widget.settingsRepository ?? LocalSettingsRepository();
-    if (AppEnvironment.useLocalRepositories) {
-      _authRepository = widget.authRepository ?? LocalAuthRepository();
-      _statsRepository = widget.statsRepository ?? LocalStatsRepository();
-    } else if (widget.clerkAuthState != null) {
+    if (widget.clerkAuthState != null) {
       final ClerkAuthTokenStore tokenStore = ClerkAuthTokenStore(
         auth: widget.clerkAuthState!,
       );
@@ -116,6 +111,10 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
           widget.statsRepository ??
           RemoteStatsRepository(apiClient: _ownedApiClient!);
       widget.clerkAuthState!.addListener(_handleClerkAuthStateChanged);
+    } else if (
+        widget.authRepository != null && widget.statsRepository != null) {
+      _authRepository = widget.authRepository!;
+      _statsRepository = widget.statsRepository!;
     } else {
       final SharedPreferencesAuthTokenStore tokenStore =
           SharedPreferencesAuthTokenStore();
@@ -134,7 +133,33 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
           RemoteStatsRepository(apiClient: _ownedApiClient!);
     }
     WidgetsBinding.instance.addObserver(_fullscreenObserver);
+    _startStartupWatchdog();
     unawaited(_loadPersistedAppState());
+  }
+
+  void _startStartupWatchdog() {
+    _startupWatchdog?.cancel();
+    _startupWatchdog = Timer(_startupWatchdogTimeout, () {
+      if (!mounted || !_isLoadingAppState) {
+        return;
+      }
+
+      debugPrint(
+        'Startup watchdog fired after $_startupWatchdogTimeout. Releasing splash screen.',
+      );
+      _showNotice(
+        const _AppNotice(
+          title: 'Startup took too long',
+          message:
+              'The app could not finish contacting Clerk or the shared backend in time. You can still try signing in again once the services respond.',
+          icon: Icons.hourglass_bottom_rounded,
+          tone: _AppNoticeTone.warning,
+        ),
+      );
+      setState(() {
+        _isLoadingAppState = false;
+      });
+    });
   }
 
   void _handleClerkAuthStateChanged() {
@@ -156,6 +181,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   }
 
   Future<void> _loadPersistedAppState() async {
+    debugPrint('Startup: loading persisted app state.');
     AppUser? currentUser;
     PlayerStats stats = PlayerStats.empty();
     List<GameSession> sessions = <GameSession>[];
@@ -166,9 +192,17 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     bool leaderboardUnavailable = false;
     bool signedInDataUnavailable = false;
     bool sessionExpired = false;
+    final Future<AppUser?> restoreSessionFuture =
+        _authRepository.restoreSession().timeout(_startupStepTimeout);
+    final Future<List<AppUser>> loadLeaderboardFuture =
+        _statsRepository.loadLeaderboardUsers().timeout(_startupStepTimeout);
 
     try {
-      currentUser = await _authRepository.restoreSession();
+      debugPrint('Startup: restoring session.');
+      currentUser = await restoreSessionFuture;
+      debugPrint(
+        'Startup: restoreSession completed. signedIn=${currentUser != null}',
+      );
     } on ApiException {
       authServiceUnavailable = true;
     } catch (_) {
@@ -176,7 +210,11 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     }
 
     try {
-      leaderboardUsers = await _statsRepository.loadLeaderboardUsers();
+      debugPrint('Startup: loading leaderboard.');
+      leaderboardUsers = await loadLeaderboardFuture;
+      debugPrint(
+        'Startup: leaderboard loaded with ${leaderboardUsers.length} users.',
+      );
     } on ApiException {
       leaderboardUsers = <AppUser>[];
       leaderboardUnavailable = true;
@@ -187,6 +225,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
 
     if (currentUser != null) {
       try {
+        debugPrint('Startup: loading signed-in user data.');
         final _SignedInState signedInState = await _fetchSignedInData(
           currentUser.id,
         );
@@ -194,6 +233,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
         sessions = signedInState.sessions;
         stats = signedInState.stats;
         leaderboardUsers = signedInState.leaderboardUsers;
+        debugPrint('Startup: signed-in user data loaded.');
       } on ApiUnauthorizedException {
         await _authRepository.signOut();
         currentUser = null;
@@ -212,7 +252,9 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     }
 
     try {
+      debugPrint('Startup: loading settings.');
       settings = await _settingsRepository.loadSettings();
+      debugPrint('Startup: settings loaded.');
     } catch (_) {
       settings = const NeuralSettings();
       recoveredSettings = true;
@@ -222,6 +264,8 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
       return;
     }
 
+    _startupWatchdog?.cancel();
+    debugPrint('Startup: applying initial app state.');
     _currentUser.value = currentUser;
     _playerStats.value = stats;
     _sessions.value = List<GameSession>.unmodifiable(sessions);
@@ -291,6 +335,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     setState(() {
       _isLoadingAppState = false;
     });
+    debugPrint('Startup: complete.');
   }
 
   Future<void> _saveCompletedSession(GameSession session) async {
@@ -342,12 +387,22 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   }
 
   Future<_SignedInState> _fetchSignedInData(int userId) async {
-    final AppUser? refreshedUser = await _authRepository.loadUserById(userId);
-    final List<GameSession> sessions = await _statsRepository
-        .loadSessionsForUser(userId);
-    final PlayerStats stats = await _statsRepository.loadStatsForUser(userId);
-    final List<AppUser> leaderboardUsers = await _statsRepository
-        .loadLeaderboardUsers();
+    final Future<AppUser?> loadUserFuture = _authRepository
+        .loadUserById(userId)
+        .timeout(_startupStepTimeout);
+    final Future<List<GameSession>> loadSessionsFuture = _statsRepository
+        .loadSessionsForUser(userId)
+        .timeout(_startupStepTimeout);
+    final Future<PlayerStats> loadStatsFuture = _statsRepository
+        .loadStatsForUser(userId)
+        .timeout(_startupStepTimeout);
+    final Future<List<AppUser>> loadLeaderboardFuture = _statsRepository
+        .loadLeaderboardUsers()
+        .timeout(_startupStepTimeout);
+    final AppUser? refreshedUser = await loadUserFuture;
+    final List<GameSession> sessions = await loadSessionsFuture;
+    final PlayerStats stats = await loadStatsFuture;
+    final List<AppUser> leaderboardUsers = await loadLeaderboardFuture;
     return _SignedInState(
       user: refreshedUser,
       sessions: sessions,
@@ -532,6 +587,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
   void dispose() {
     WidgetsBinding.instance.removeObserver(_fullscreenObserver);
     widget.clerkAuthState?.removeListener(_handleClerkAuthStateChanged);
+    _startupWatchdog?.cancel();
     _ownedApiClient?.close();
     _currentUser.dispose();
     _playerStats.dispose();
@@ -683,7 +739,7 @@ class _MissingClerkConfigurationApp extends StatelessWidget {
                         ),
                         SizedBox(height: 12),
                         Text(
-                          'Run the app with --dart-define=CLERK_PUBLISHABLE_KEY=pk_... or enable local repositories with --dart-define=USE_LOCAL_DATA=true.',
+                          'Run the app with --dart-define=CLERK_PUBLISHABLE_KEY=pk_... and, if needed, --dart-define=API_BASE_URL=https://your-api.example.com.',
                           style: TextStyle(
                             color: Color(0xFFD2D8E2),
                             fontSize: 15,
@@ -2128,9 +2184,9 @@ class _LocalAuthScreenState extends State<_LocalAuthScreen> {
                         ],
                       ),
                       const SizedBox(height: 20),
-                      Text(
-                        _mode == _AuthMode.signIn ? 'Sign in' : 'Create account',
-                        style: const TextStyle(
+                      const Text(
+                        'Sign in or create a shared player account',
+                        style: TextStyle(
                           color: NeuralTheme.text,
                           fontSize: 28,
                           fontWeight: FontWeight.w800,
@@ -2138,8 +2194,10 @@ class _LocalAuthScreenState extends State<_LocalAuthScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      const Text(
-                        'Use username and password.',
+                      Text(
+                        _mode == _AuthMode.signIn
+                            ? 'Use your shared leaderboard username and password.'
+                            : 'Create a shared profile with a username and password.',
                         style: TextStyle(
                           color: NeuralTheme.textMuted,
                           fontSize: 14,
@@ -2213,7 +2271,7 @@ class _LocalAuthScreenState extends State<_LocalAuthScreen> {
                               : Text(
                                   _mode == _AuthMode.signIn
                                       ? 'SIGN IN'
-                                      : 'CREATE ACCOUNT',
+                                      : 'CREATE PROFILE',
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w800,

@@ -1,19 +1,27 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import HTTPException, Request, status
 from fastapi.testclient import TestClient
+import pytest
 
 from backend.app.auth import AuthenticatedSubject
 from backend.app.config import Settings
 from backend.app.main import create_app
 
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "").strip()
+
+pytestmark = pytest.mark.skipif(
+    not TEST_DATABASE_URL,
+    reason="Set TEST_DATABASE_URL to run backend API tests against PostgreSQL.",
+)
+
 
 def _build_client(tmp_path: Path) -> TestClient:
-  database_path = tmp_path / "test.db"
   settings = Settings(
-      database_url=f"sqlite+pysqlite:///{database_path}",
+      database_url=TEST_DATABASE_URL,
       clerk_secret_key="sk_test_example",
       cors_origins=[],
   )
