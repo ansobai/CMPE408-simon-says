@@ -1,0 +1,4 @@
+// Copy this file to ios/Flutter/AppConfig.xcconfig and fill in your real values.
+APP_DISPLAY_NAME = Simon Says
+APP_BUNDLE_IDENTIFIER = com.yourteam.simonsays
+APPLE_DEVELOPMENT_TEAM = YOURTEAMID
