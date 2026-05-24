@@ -229,6 +229,7 @@ Future<void> _captureSignedInFlow(
           settings: settingsNotifier,
           onSettingsChanged: (_) {},
           onSignOut: _noopSignOut,
+          onDeleteAccount: _noopSignOut,
         ),
       ),
     ),
@@ -449,6 +450,11 @@ class _MutableAuthRepository extends AuthRepository {
   }
 
   @override
+  Future<void> deleteAccount() async {
+    _currentUser = null;
+  }
+
+  @override
   Future<AppUser> signUp({
     required String username,
     required String password,
@@ -486,6 +492,9 @@ class _StaticAuthRepository extends AuthRepository {
 
   @override
   Future<void> signOut() async {}
+
+  @override
+  Future<void> deleteAccount() async {}
 
   @override
   Future<AppUser> signUp({

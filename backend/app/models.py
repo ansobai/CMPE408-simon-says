@@ -32,6 +32,13 @@ class User(Base):
     return self.best_score
 
 
+class DeletedSubject(Base):
+  __tablename__ = "deleted_subjects"
+
+  subject: Mapped[str] = mapped_column(String(255), primary_key=True)
+  deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class GameSession(Base):
   __tablename__ = "game_sessions"
   __table_args__ = (

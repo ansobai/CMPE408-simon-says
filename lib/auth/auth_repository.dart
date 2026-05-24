@@ -30,4 +30,6 @@ abstract class AuthRepository {
   Future<AppUser> signUp({required String username, required String password});
 
   Future<void> signOut();
+
+  Future<void> deleteAccount();
 }

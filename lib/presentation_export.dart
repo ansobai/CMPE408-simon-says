@@ -228,6 +228,7 @@ class _PresentationExportAppState extends State<_PresentationExportApp> {
       settings: _settings,
       onSettingsChanged: (_) {},
       onSignOut: () async {},
+      onDeleteAccount: () async {},
     );
   }
 

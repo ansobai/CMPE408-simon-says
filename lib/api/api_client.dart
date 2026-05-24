@@ -90,6 +90,19 @@ class ApiClient {
     return _castJsonMap(decoded);
   }
 
+  Future<void> delete(
+    String path, {
+    bool authenticated = false,
+    Object? body,
+  }) async {
+    await _send(
+      'DELETE',
+      path,
+      authenticated: authenticated,
+      body: body,
+    );
+  }
+
   void close() {
     _httpClient.close();
   }
@@ -154,6 +167,12 @@ class ApiClient {
           headers: headers,
           body: body == null ? null : jsonEncode(body),
         );
+      case 'DELETE':
+        return _httpClient.delete(
+          uri,
+          headers: headers,
+          body: body == null ? null : jsonEncode(body),
+        );
       default:
         throw UnsupportedError('Unsupported HTTP method: $method');
     }
@@ -189,6 +208,9 @@ class ApiClient {
         'The shared service returned HTTP ${response.statusCode}.';
     if (response.statusCode == 401) {
       throw ApiUnauthorizedException(message);
+    }
+    if (response.statusCode == 410) {
+      throw ApiGoneException(message);
     }
     throw ApiRequestException(message, statusCode: response.statusCode);
   }

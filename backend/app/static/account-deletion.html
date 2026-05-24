@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Simon Says Account Deletion</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #fff7f3;
+        --surface: #ffffff;
+        --text: #261917;
+        --muted: #6f5550;
+        --accent: #c2572b;
+        --border: #f0d8cf;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Arial, sans-serif;
+        background: linear-gradient(180deg, #fff2ea 0%, var(--bg) 100%);
+        color: var(--text);
+      }
+
+      main {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 40px 20px 64px;
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 32px;
+        box-shadow: 0 18px 60px rgba(38, 25, 23, 0.08);
+      }
+
+      h1,
+      h2 {
+        margin: 0 0 16px;
+        line-height: 1.15;
+      }
+
+      h1 {
+        font-size: 2.4rem;
+      }
+
+      h2 {
+        margin-top: 28px;
+        font-size: 1.2rem;
+      }
+
+      p,
+      li {
+        color: var(--muted);
+        font-size: 1rem;
+        line-height: 1.65;
+      }
+
+      ol,
+      ul {
+        padding-left: 22px;
+      }
+
+      .eyebrow {
+        display: inline-block;
+        margin-bottom: 14px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(194, 87, 43, 0.12);
+        color: var(--accent);
+        font-size: 0.8rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .meta {
+        margin-top: 14px;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="card">
+        <div class="eyebrow">Simon Says</div>
+        <h1>Account Deletion</h1>
+        <p class="meta">Updated: May 21, 2026</p>
+        <p>
+          Simon Says supports in-app account deletion. You can permanently
+          remove your sign-in account and synced app data directly from the
+          mobile app.
+        </p>
+
+        <h2>How to delete your account in the app</h2>
+        <ol>
+          <li>Open the Simon Says app.</li>
+          <li>Sign in to the account you want to remove.</li>
+          <li>Go to <strong>Settings</strong>.</li>
+          <li>Open the <strong>Account</strong> section.</li>
+          <li>Tap <strong>Delete Account</strong>.</li>
+          <li>Confirm the deletion prompt.</li>
+        </ol>
+
+        <h2>What is deleted</h2>
+        <ul>
+          <li>Your Simon Says sign-in account used through Clerk.</li>
+          <li>Your synced sessions and gameplay history stored for the app.</li>
+          <li>Your player stats and leaderboard entry associated with the app.</li>
+        </ul>
+
+        <h2>What may be retained</h2>
+        <p>
+          We may retain limited technical or security logs for a reasonable
+          period when necessary for fraud prevention, abuse handling, legal
+          compliance, or service security.
+        </p>
+
+        <h2>If you cannot access the app</h2>
+        <p>
+          If you cannot access the app and still need deletion help, contact
+          <a href="mailto:support@simonthats.com">support@simonthats.com</a>
+          and include enough information to identify the account, such as your
+          username or the email tied to your sign-in provider.
+        </p>
+
+        <h2>Related policy</h2>
+        <p>
+          For broader information about data use and retention, see the
+          <a href="/privacy">Privacy Policy</a>.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

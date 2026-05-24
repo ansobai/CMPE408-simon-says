@@ -21,3 +21,9 @@ class ApiUnauthorizedException extends ApiException {
     super.message = 'Your session has expired. Please sign in again.',
   ]) : super(statusCode: 401);
 }
+
+class ApiGoneException extends ApiException {
+  const ApiGoneException([
+    super.message = 'This account is no longer available.',
+  ]) : super(statusCode: 410);
+}
