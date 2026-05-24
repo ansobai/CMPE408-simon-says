@@ -81,6 +81,14 @@ class RemoteAuthRepository extends AuthRepository {
   }
 
   @override
+  Future<void> deleteAccount() async {
+    throw const AuthFailure(
+      AuthFailureCode.serviceUnavailable,
+      'This build only supports account deletion through the Clerk-backed sign-in flow.',
+    );
+  }
+
+  @override
   Future<AppUser> signUp({
     required String username,
     required String password,

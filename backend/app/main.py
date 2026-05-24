@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from clerk_backend_api import Clerk
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Settings, get_settings
@@ -11,6 +14,8 @@ from .dependencies import (
     default_subject_authenticator,
 )
 from .routers import auth_router, stats_router
+
+_static_dir = Path(__file__).resolve().parent / "static"
 
 
 def create_app(
@@ -48,6 +53,14 @@ def create_app(
 
   app.include_router(auth_router)
   app.include_router(stats_router)
+
+  @app.get("/privacy", include_in_schema=False)
+  def privacy_policy() -> FileResponse:
+    return FileResponse(_static_dir / "privacy.html")
+
+  @app.get("/account-deletion", include_in_schema=False)
+  def account_deletion() -> FileResponse:
+    return FileResponse(_static_dir / "account-deletion.html")
 
   @app.get("/healthz")
   def healthcheck() -> dict[str, str]:

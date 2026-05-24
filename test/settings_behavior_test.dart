@@ -340,6 +340,9 @@ class _SignedInAuthRepository extends AuthRepository {
   Future<void> signOut() async {}
 
   @override
+  Future<void> deleteAccount() async {}
+
+  @override
   Future<AppUser> signUp({
     required String username,
     required String password,

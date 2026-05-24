@@ -583,6 +583,48 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
     });
   }
 
+  Future<void> _deleteAccount() async {
+    try {
+      await _authRepository.deleteAccount();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _currentUser.value = null;
+        _playerStats.value = PlayerStats.empty();
+        _sessions.value = const <GameSession>[];
+        _leaderboardUsers.value = const <AppUser>[];
+        _showNotice(
+          const _AppNotice(
+            title: 'Account deleted',
+            message:
+                'Your sign-in account and synced sessions, stats, and leaderboard data were removed.',
+            icon: Icons.delete_forever_rounded,
+            tone: _AppNoticeTone.info,
+          ),
+        );
+      });
+    } on ApiUnauthorizedException {
+      await _handleExpiredSession();
+    } on AuthFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _showNotice(
+          _AppNotice(
+            title: 'Account deletion failed',
+            message: error.message,
+            icon: Icons.warning_amber_rounded,
+            tone: _AppNoticeTone.warning,
+          ),
+        );
+      });
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(_fullscreenObserver);
@@ -658,6 +700,7 @@ class _NeuralRecallAppState extends State<NeuralRecallApp> {
                   onDismissNotice: _clearNotice,
                   onSettingsChanged: _updateSettings,
                   onSignOut: _signOut,
+                  onDeleteAccount: _deleteAccount,
                 ),
         );
       },
@@ -2960,6 +3003,7 @@ class SettingsScreen extends StatelessWidget {
     required this.settings,
     required this.onSettingsChanged,
     required this.onSignOut,
+    required this.onDeleteAccount,
   });
 
   final ValueNotifier<AppUser?> currentUser;
@@ -2967,6 +3011,7 @@ class SettingsScreen extends StatelessWidget {
   final ValueNotifier<NeuralSettings> settings;
   final ValueChanged<NeuralSettings> onSettingsChanged;
   final Future<void> Function() onSignOut;
+  final Future<void> Function() onDeleteAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -3009,6 +3054,7 @@ class SettingsScreen extends StatelessWidget {
                                     settings: currentSettings,
                                     onSettingsChanged: onSettingsChanged,
                                     onSignOut: onSignOut,
+                                    onDeleteAccount: onDeleteAccount,
                                   ),
                                 ),
                               ),
@@ -3035,6 +3081,7 @@ class _SettingsDashboard extends StatelessWidget {
     required this.settings,
     required this.onSettingsChanged,
     required this.onSignOut,
+    required this.onDeleteAccount,
   });
 
   final AppUser? currentUser;
@@ -3042,6 +3089,7 @@ class _SettingsDashboard extends StatelessWidget {
   final NeuralSettings settings;
   final ValueChanged<NeuralSettings> onSettingsChanged;
   final Future<void> Function() onSignOut;
+  final Future<void> Function() onDeleteAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -3057,7 +3105,11 @@ class _SettingsDashboard extends StatelessWidget {
         const SizedBox(height: 18),
         _SettingsHeroCard(bestStreak: bestStreak, settings: settings),
         const SizedBox(height: 22),
-        _LocalProfileCard(currentUser: currentUser, onSignOut: onSignOut),
+        _LocalProfileCard(
+          currentUser: currentUser,
+          onSignOut: onSignOut,
+          onDeleteAccount: onDeleteAccount,
+        ),
         const SizedBox(height: 22),
         const _SettingsSectionTitle(
           label: 'APPEARANCE',
@@ -3340,10 +3392,15 @@ class _SettingsHeroCard extends StatelessWidget {
 }
 
 class _LocalProfileCard extends StatelessWidget {
-  const _LocalProfileCard({required this.currentUser, required this.onSignOut});
+  const _LocalProfileCard({
+    required this.currentUser,
+    required this.onSignOut,
+    required this.onDeleteAccount,
+  });
 
   final AppUser? currentUser;
   final Future<void> Function() onSignOut;
+  final Future<void> Function() onDeleteAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -3396,7 +3453,7 @@ class _LocalProfileCard extends StatelessWidget {
           Text(
             currentUser == null
                 ? 'Sign in to sync runs to your shared account.'
-                : 'Best synced score ${_formatNumber(currentUser!.score)}. Sign out here if you want to switch to another player account.',
+                : 'Best synced score ${_formatNumber(currentUser!.score)}. Sign out here if you want to switch accounts, or permanently delete the account and synced history.',
             style: const TextStyle(
               color: NeuralTheme.textMuted,
               fontSize: 14,
@@ -3421,6 +3478,62 @@ class _LocalProfileCard extends StatelessWidget {
               icon: const Icon(Icons.logout_rounded),
               label: const Text(
                 'SIGN OUT',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: currentUser == null
+                  ? null
+                  : () async {
+                      final bool confirmed =
+                          await showDialog<bool>(
+                            context: context,
+                            builder: (context) {
+                              return AlertDialog(
+                                backgroundColor: NeuralTheme.surface,
+                                title: const Text('Delete account?'),
+                                content: const Text(
+                                  'This permanently removes your sign-in account, synced sessions, stats, and leaderboard entry. This cannot be undone.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.of(context).pop(false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () => Navigator.of(context).pop(true),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: NeuralTheme.secondary,
+                                      foregroundColor: NeuralTheme.background,
+                                    ),
+                                    child: const Text('Delete'),
+                                  ),
+                                ],
+                              );
+                            },
+                          ) ??
+                          false;
+                      if (confirmed) {
+                        await onDeleteAccount();
+                      }
+                    },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: NeuralTheme.secondary,
+                side: BorderSide(
+                  color: NeuralTheme.secondary.withValues(alpha: 0.32),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+              icon: const Icon(Icons.delete_forever_rounded),
+              label: const Text(
+                'DELETE ACCOUNT',
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
             ),
@@ -4818,6 +4931,7 @@ class _NeuralHomeShell extends StatefulWidget {
     required this.onDismissNotice,
     required this.onSettingsChanged,
     required this.onSignOut,
+    required this.onDeleteAccount,
   });
 
   final ValueNotifier<AppUser?> currentUser;
@@ -4830,6 +4944,7 @@ class _NeuralHomeShell extends StatefulWidget {
   final VoidCallback onDismissNotice;
   final ValueChanged<NeuralSettings> onSettingsChanged;
   final Future<void> Function() onSignOut;
+  final Future<void> Function() onDeleteAccount;
 
   @override
   State<_NeuralHomeShell> createState() => _NeuralHomeShellState();
@@ -4884,6 +4999,7 @@ class _NeuralHomeShellState extends State<_NeuralHomeShell> {
           settings: widget.settings,
           onSettingsChanged: widget.onSettingsChanged,
           onSignOut: widget.onSignOut,
+          onDeleteAccount: widget.onDeleteAccount,
         );
     }
   }

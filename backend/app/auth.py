@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import User
+from .models import DeletedSubject, User
 
 _external_subject_prefix = "clerk:"
 _generated_username_prefix = "player-"
@@ -19,7 +19,16 @@ class AuthenticatedSubject:
   subject: str
 
 
+class SubjectDeletedError(Exception):
+  def __init__(self, subject: str):
+    super().__init__(f"Subject {subject} has been deleted.")
+    self.subject = subject
+
+
 def ensure_user_for_subject(db: Session, subject: str) -> User:
+  if is_subject_deleted(db, subject):
+    raise SubjectDeletedError(subject)
+
   user = load_user_by_subject(db, subject)
   if user is not None:
     return user
@@ -41,6 +50,10 @@ def ensure_user_for_subject(db: Session, subject: str) -> User:
 
 def load_user_by_subject(db: Session, subject: str) -> User | None:
   return db.scalar(select(User).where(User.password_hash == _subject_marker(subject)))
+
+
+def is_subject_deleted(db: Session, subject: str) -> bool:
+  return db.get(DeletedSubject, subject) is not None
 
 
 def sync_user_for_subject(
@@ -70,6 +83,18 @@ def sync_user_for_subject(
   db.commit()
   db.refresh(user)
   return user
+
+
+def delete_user_for_subject(db: Session, subject: str) -> None:
+  existing_deletion = db.get(DeletedSubject, subject)
+  if existing_deletion is None:
+    db.add(DeletedSubject(subject=subject, deleted_at=datetime.now(UTC)))
+
+  user = load_user_by_subject(db, subject)
+  if user is not None:
+    db.delete(user)
+
+  db.commit()
 
 
 def _resolve_preferred_username(

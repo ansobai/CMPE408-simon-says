@@ -5,7 +5,7 @@ from fastapi.security import OAuth2PasswordBearer
 from clerk_backend_api.security.types import AuthenticateRequestOptions
 from sqlalchemy.orm import Session
 
-from .auth import AuthenticatedSubject, ensure_user_for_subject
+from .auth import AuthenticatedSubject, SubjectDeletedError, ensure_user_for_subject
 from .config import Settings
 from .models import User
 
@@ -79,4 +79,10 @@ def get_current_user(
     authenticated_subject: AuthenticatedSubject = Depends(get_authenticated_subject),
     db: Session = Depends(get_db),
 ) -> User:
-  return ensure_user_for_subject(db, authenticated_subject.subject)
+  try:
+    return ensure_user_for_subject(db, authenticated_subject.subject)
+  except SubjectDeletedError as error:
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="This account has been deleted.",
+    ) from error

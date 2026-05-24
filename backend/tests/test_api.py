@@ -214,6 +214,34 @@ def test_leaderboard_orders_by_score_then_last_played_then_username_and_limit(
   assert usernames == ["adam", "bob", "zoe"]
 
 
+def test_delete_me_removes_user_data_and_blocks_recreation(tmp_path: Path) -> None:
+  client = _build_client(tmp_path)
+  _sync_user(client, "user_delete", username="deleteme")
+  headers = _auth_headers("user_delete")
+
+  submitted = client.post(
+      "/sessions",
+      json=_session_payload(score=77, ended_at="2026-05-04T10:05:00Z"),
+      headers=headers,
+  )
+  deleted = client.delete("/me", headers=headers)
+  me = client.get("/me", headers=headers)
+  sync = client.post(
+      "/auth/sync",
+      headers=headers,
+      json={"username": "deleteme", "name": None, "email": None},
+  )
+  leaderboard = client.get("/leaderboard")
+
+  assert submitted.status_code == 201, submitted.text
+  assert deleted.status_code == 204, deleted.text
+  assert me.status_code == 410
+  assert me.json()["detail"] == "This account has been deleted."
+  assert sync.status_code == 410
+  assert sync.json()["detail"] == "This account has been deleted."
+  assert all(user["username"] != "deleteme" for user in leaderboard.json()["users"])
+
+
 def test_unauthorized_requests_are_rejected(tmp_path: Path) -> None:
   client = _build_client(tmp_path)
 

@@ -1,3 +1,4 @@
+import 'package:clerk_auth/clerk_auth.dart' as clerk;
 import 'package:clerk_flutter/clerk_flutter.dart';
 
 import '../api/api_client.dart';
@@ -24,6 +25,9 @@ class ClerkAuthRepository extends AuthRepository {
     } on ApiUnauthorizedException {
       await _auth.signOut();
       rethrow;
+    } on ApiGoneException {
+      await _auth.signOut();
+      return null;
     }
   }
 
@@ -38,12 +42,45 @@ class ClerkAuthRepository extends AuthRepository {
     } on ApiUnauthorizedException {
       await _auth.signOut();
       return null;
+    } on ApiGoneException {
+      await _auth.signOut();
+      return null;
     }
   }
 
   @override
   Future<AppUser> signIn({required String username, required String password}) {
     return _syncSignedInUser();
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    if (!_auth.isSignedIn || _auth.user == null) {
+      throw const AuthFailure(
+        AuthFailureCode.serviceUnavailable,
+        'Sign in before trying to delete this account.',
+      );
+    }
+
+    try {
+      await _apiClient.delete('/me', authenticated: true);
+      await _auth.deleteUser();
+    } on ApiUnauthorizedException {
+      await _auth.signOut();
+      rethrow;
+    } on ApiGoneException {
+      await _auth.signOut();
+    } on ApiRequestException catch (error) {
+      throw AuthFailure(AuthFailureCode.serviceUnavailable, error.message);
+    } on ApiNetworkException catch (error) {
+      throw AuthFailure(AuthFailureCode.serviceUnavailable, error.message);
+    } on clerk.ClerkError {
+      await _auth.signOut();
+      throw const AuthFailure(
+        AuthFailureCode.serviceUnavailable,
+        'Your synced data was deleted, but Clerk could not finish removing the sign-in account. Try signing in again and repeating the deletion if the account still exists.',
+      );
+    }
   }
 
   @override

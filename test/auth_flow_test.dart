@@ -130,6 +130,11 @@ class _MutableAuthRepository extends AuthRepository {
   }
 
   @override
+  Future<void> deleteAccount() async {
+    _currentUser = null;
+  }
+
+  @override
   Future<AppUser> signUp({
     required String username,
     required String password,
